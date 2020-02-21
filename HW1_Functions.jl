@@ -1,44 +1,46 @@
 using Plots
 using Printf
 using LinearAlgebra
+#using Seaborn
 
 # -------------------------------------------------------
 # User Edits
 # -------------------------------------------------------
 # Grid Parameters (Convention will be 1 = bottom)
 levels    = collect(1000:-100:0)     #
-kmax      = length(levels);          # maximum index of k
-z_f       = ones(Int8,1,kmax)*100    # Height of each cell
+#levels    = hcat([1000:100:0])
+kmax      = length(levels)         # maximum index of k
+z_f       = ones(Int8,1,kmax)*100   # Height of each cell
 z_c       = ones(Int8,1,kmax+1)*100  # Height of each cell # Distance between cell midpoints
 
 
 # Source/Sink Options --------------------------
 z_att     =  400  # Attenuation depth for source
-ocn_trns  = 0.43  # Transmitted portion through ocn surface
-S0        =  6.7  # Constant multiplying source term
-cp0       = 3850  # J(kg*C)
-rho       = 1025  # kg/m^3
+ocn_trns  = 0.43   # Transmitted portion through ocn surface
+S0        =  125  # Constant multiplying source term
+cp0       = 3850   # J(kg*C)
+rho       = 1025   # kg/m^3
 
 # Eddy Diffusivity Options --------------------------
-mld       = 500   # Mixed Layer Depth
-κ_mld     = 10^-1 # Eddy Diffusivity in mixed-layer
-κ_int     = 10^-4 # Eddy Diffusivity in the interior
+mld       =  300  # Mixed Layer Depth
+κ_mld     = 10^0 # Eddy Diffusivity in mixed-layer
+κ_int     = 10^-2 #Eddy Diffusivity in the interior
 
 # Iteration Parameters ------------------------------
 tol       = 1e-8
-x_g       = ones(Float64,kmax)
+x_g       = ones(kmax)*5#collect(0:10/(kmax-1):10)
 ω         = 0.7
-max_iter  = 1000000
+max_iter  = 1000
 method    = 1
 
 # Setting Boundary Conditions --------------------------
 # Currently Hard coded to work with 1-D F_diff, Temperature
 # Where F_diff = -κ(ΔT/Δz)
 BC_top    = 2    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
-BC_bot    = 1    # Bot BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
+BC_bot    = 1   # Bot BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 
-val_top   = 6.7/(cp0*rho*z_f[end]) # For this case, I use a flux
-val_bot   = 0   # In this case, I just prescribe a temperature at the boundary
+val_top   = S0/(cp0*rho*mld) # For this case, I use a flux
+val_bot   = 5   # In this case, I just prescribe a temperature at the boundary
 
 z_t       = 2
 z_b       = 2
@@ -85,10 +87,10 @@ Inputs
 Outputs
     1) S      = Source/Sink Term
 """
-function FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0)
+function FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0,mld)
     #Q = (ocn_trns * S0 * exp.(-1 * levels ./ z_att))
     #S = Q ./ (z_f .* cp0 .* rho)'
-    S = (ocn_trns * S0 * exp.(-1 * levels ./ z_att)) ./ (z_f .* cp0 .* rho)'
+    S = (ocn_trns * S0 * exp.(-1 * levels ./ z_att)) ./ (mld .* cp0 .* rho)'
     return S
 end
 """
@@ -169,7 +171,7 @@ function FD_calc_coeff(kmax,z_f,z_c, # Cell geometry/indices
     # Neumann Top
     elseif BC_top == 2
         # Compute Source Term with BC (Prescribed Flux)
-        global B[kmax]   = S[k] - val_top / z_f[k]
+        global B[kmax]   = S[k] - val_top / z_f[k] # CHANGE THIS
 
         # Calculate C(k,k)
         C[2,kmax] = κ[k] / (z_f[k] * z_c[k])# This depends on the type of BC
@@ -212,6 +214,7 @@ Input
     6) max_iter - maximum number of iterations
     7) ω       - weights for successive overrelaxation
 """
+
 function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω)
 
     #Preallocate [iteration x length]
@@ -329,7 +332,7 @@ du = C[3,1:end-1]
 dl = C[1,2:end]
 d  = C[2,:]
 C_new = Tridiagonal(dl,d,du)
-T_inv = B_new' * inv(C_new)
+Tz_inv = B_new' * inv(C_new)
 
 p = plot(Tz_inv[end,:],levels,
         xlabel="Temp",
@@ -337,6 +340,13 @@ p = plot(Tz_inv[end,:],levels,
         yticks = 0:100:1000,
         yflip=true,
         fmt=png)
+
+# plot(S[1:500],levels[1:500],
+#         xlabel="Temp",
+#         ylabel="Depth",
+#         yticks = 0:100:1000,
+#         yflip=true,
+#         fmt=png)
 
 plot!(Tz_new[end,:],levels)#,
 #         xlabel="Temp",
