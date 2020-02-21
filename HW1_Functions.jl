@@ -368,14 +368,25 @@ Tz_new,itcnt,resid = FD_calc_T(C,B_new,x_g,tol,Method,max_iter,ω,Tz_inv)
 
 
 
-# Plotting
+# Plotting Sample
+gr()
 p = plot(Tz_inv[end,:],levels,
-        xlabel="Temp",
-        ylabel="Depth",
+        title="Temperature Profiles",
+        xlabel="Temperature(°C)",
+        ylabel="Depth (m)",
         yticks = 0:100:1000,
         yflip=true,
-        fmt=png)
-plot!(Tz_new[end,:],levels)#,
+        fmt=png,
+        lw=2.5,
+        linestyle=:dot,
+        linecolor=:black,
+        labels="Inverted Solution",
+        legend=:topleft)
+plot!(Tz_new[end,:],levels,
+        lw = 1,
+        linecolor=:red,
+        labels="Iterated Solution x" * string(itcnt))#,
+savefig(p,"HW1_Solution.svg")
 #         xlabel="Temp",
 #         ylabel="Depth",
 #         yticks = 0:100:1000,
