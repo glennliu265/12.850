@@ -1,6 +1,7 @@
 using Plots
 using Printf
 using LinearAlgebra
+#using PyPlot
 #using Seaborn
 
 # -------------------------------------------------------
@@ -27,11 +28,11 @@ mld       =  300  # Mixed Layer Depth
 κ_int     = 10^-2 #Eddy Diffusivity in the interior
 
 # Iteration Parameters ------------------------------
-tol       = 1e-8
+tol       = 1e-5
 x_g       = ones(kmax)*5#collect(0:10/(kmax-1):10)
-ω         = 0.7
-max_iter  = 1000
-method    = 1
+ω         = 1.5
+max_iter  = 500000
+method    = 3
 
 # Setting Boundary Conditions --------------------------
 # Currently Hard coded to work with 1-D F_diff, Temperature
@@ -205,6 +206,9 @@ x is the temperature profile and B is the source term.
 Begins with an initial guess, x and iterates until the residual
 (sum of(Ax-B)^2) is below the tolerance level
 
+Note that input 8 is temporary (need to figure out correct
+way to compute residuals)
+
 Input
     1) C       - coefficients
     2) B       - source term
@@ -213,9 +217,10 @@ Input
     5) Method  - (1) Jacobi, (2) Gauss-Siedel, (3) SOR
     6) max_iter - maximum number of iterations
     7) ω       - weights for successive overrelaxation
+    8) x_inv   - Inverted solution for error calculation
 """
 
-function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω)
+function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv)
 
     #Preallocate [iteration x length]
     Tz = zeros(Float64,max_iter,length(x_g))
@@ -225,7 +230,7 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω)
     m     = 1 # Iteration Storage Number
     err   = tol+1 # initial value
 
-    while err > tol || m <= max_iter
+    while err > tol #|| m <= max_iter
         r_m  = zeros(Float64,1,kmax)
         for k = 1:kmax
 
@@ -290,17 +295,20 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω)
                 global Tz[m,k] = ω * Tz[m,k] + (1-ω) * Tz[m-1,k]
             end
 
-            r_m[k] = (C0*T0 + C1*Tz[m,k] + C2*T2 - B1).^2
+            #r_m[k] = (C0*T0 + C1*Tz[m,k] + C2*T2 - B1).^2
         end
 
         # Compute residual
-        r[m] = sum(r_m,dims=2)[1]
+        #r[m] = sum(r_m,dims=2)[1]
+        x_itr = Tz[m,:]
+        x_err = sqrt.((x_itr' .- x_inv).^2)
+        r[m] =sum(x_err,dims=2)[1]
         err = r[m]
 
 
         #@printf("Now on iteration %i with residual %.5E \n",m,err)
         if mod(m,5000)==0
-            @printf("Now on iteration %i\n",m)
+            @printf("Now on iteration %i with err %f\n",m,err)
         end
         itcnt += 1
         m += 1
@@ -310,9 +318,35 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω)
     r  =  r[1:itcnt]
     Tz = Tz[1:itcnt,:]
 
-    return Tz, itcnt
+    return Tz, itcnt,r
 end
+"""
+FD_inv_sol -------------------------------------------
+Find the solution of Ax=B by inverting A, which contains
+the coefficients of a tridiagonal matrix.
+The first dim of a indicates...
+    1 = subdiagonal (lower)
+    2 = diagonal
+    3 = superdiagonal (upper)
 
+Inputs
+    1) A       = Coefficients (coeff#,k)
+    2) B       = R.H.S. (1xk)
+
+Outputs
+    1) A_tri   = Tridiagonal Matrix
+
+
+"""
+function FD_inv_sol(A,B)
+    # Create Tridiagonal Matrix
+    du = A[3,1:end-1] # Upper diagonal
+    dl = A[1,2:end]   # Lower diagonal
+    d  = A[2,:]       # Diagonal
+    A_tri = Tridiagonal(dl,d,du)
+    x = B' * inv(A_tri)
+   return A_tri,x
+end
 
 
 #Make κ
@@ -324,36 +358,30 @@ S   = FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0)
 # Calculate Coefficients
 C,B_new = FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b)
 
+# Get Solution via inverting matrix
+C_new,Tz_inv = FD_inv_sol(C,B_new)
 
 # Calculate T
-Tz_new,itcnt = FD_calc_T(C,B_new,x_g,tol,Method,max_iter,ω)
+Tz_new,itcnt,resid = FD_calc_T(C,B_new,x_g,tol,Method,max_iter,ω,Tz_inv)
 
-du = C[3,1:end-1]
-dl = C[1,2:end]
-d  = C[2,:]
-C_new = Tridiagonal(dl,d,du)
-Tz_inv = B_new' * inv(C_new)
 
+
+
+
+# Plotting
 p = plot(Tz_inv[end,:],levels,
         xlabel="Temp",
         ylabel="Depth",
         yticks = 0:100:1000,
         yflip=true,
         fmt=png)
-
-# plot(S[1:500],levels[1:500],
-#         xlabel="Temp",
-#         ylabel="Depth",
-#         yticks = 0:100:1000,
-#         yflip=true,
-#         fmt=png)
-
 plot!(Tz_new[end,:],levels)#,
 #         xlabel="Temp",
 #         ylabel="Depth",
 #         yticks = 0:100:1000,
 #         yflip=true,
 #         fmt=png)
+
 # p = plot(Tz_new[1:100:1000,:]',levels,
 #         xlabel="Temp",
 #         ylabel="Depth",
