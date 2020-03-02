@@ -34,7 +34,8 @@ mld       =  300  # Mixed Layer Depth
 tol       = 1e-5
 x_g       = collect(5:5/(kmax-1):10)#ones(kmax)*5
 ω         = 1.9
-max_iter  = 500000
+max_iter  = 200000
+printint  = 50000
 method    = 3
 
 # Setting Boundary Conditions --------------------------
@@ -133,6 +134,7 @@ function FD_calc_coeff(kmax,z_f,z_c, # Cell geometry/indices
     # Preallocate
     C = zeros(Float64,3,kmax)
     B = zeros(Float64,kmax)
+    A = zeros(Float64,kmax,kmax)
 
     # Options for bottom boundary ------------------------------------
     k = 1
@@ -195,7 +197,13 @@ function FD_calc_coeff(kmax,z_f,z_c, # Cell geometry/indices
         C[2,k] = (C[1,k] + C[3,k]) * -1 # Note this might only work in certain cases
     end
 
-    return C,B
+    # Output A Matrix (optional)
+    du = C[3,1:end-1]
+    dl = C[1,2:end]
+    d  = C[2,:]
+    A  = Tridiagonal(dl,d,du)
+
+    return C,B,A
 end
 
 """
@@ -223,25 +231,32 @@ Input
     8) x_inv   - Inverted solution for error calculation
 """
 
-function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv)
+function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
 
-    #Preallocate [iteration x length]
-    Tz = zeros(Float64,max_iter,length(x_g))
-    r  = zeros(Float64,max_iter)
+    # Preallocate Arrays [1 x # of cells]
+    Tz  = zeros(Float64,2,length(x_g)) # Array for current profile (itr=m)
+    Tz0 = zeros(Float64,1,length(x_g)) # Array for prev. profile (itr=m-1)
+    r  = Float64[]#zeros(Float64,max_iter+1)       # Array of residuals
+    #Tz_all = zeros(Float64,max_iter,length(x_g))
 
-    itcnt = 0 # Count of Iterations
-    m     = 1 # Iteration Storage Number
-    err   = tol+1 # initial value
+    # Set up counters and indexing
+    itcnt = 0     # Count of Iterations
+    m     = 0     # Iteration Storage Number
+    err   = tol+1 # initial value, pre error calculation (need to set up for the diff between guess and actual)
 
-    while err > tol || m <= max_iter
-        r_m  = zeros(Float64,1,kmax)
+    while  m <= max_iter #|| err > tol
+        #@printf("Starting iter %i...",m)
+        r_m  = zeros(Float64,1,kmax+1)
         for k = 1:kmax
+
+
 
             # Get temperature values
             # Use Initial Guess for first iteration
             if itcnt == 0
                 # 1st Cell
                 if k == 1
+
                     T0 = 0
                     T2 = x_g[k+1]
                 # Last Cell
@@ -254,31 +269,32 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv)
                     T2 = x_g[k+1]
                 end
             else
-
                 # First Cell
                 if k == 1
                     T0 = 0
-                    T2 = Tz[m-1,k+1]
+                    T2 = Tz[2,k+1]
                 # Last Cell
                 elseif k == kmax
-                    # For Jacobi Method, use previous values
+                    # For Jacobi Method, use previous values (Tz[2,:])
                     if Method == 1
-                        T0 = Tz[m-1,k-1]
-                    # For GS and SOR, use new value
+                        T0 = Tz[2,k-1]
+                    # For GS and SOR, use new value (Tz)
                     else
-                        T0 = Tz[m  ,k-1]
+                        T0 = Tz[1,k-1]
                     end
                     T2 = 0
                 # Interior Cells
                 else
                     # For Jacobi Method, use previous values
                     if Method == 1
-                        T0 = Tz[m-1,k-1]
+                        T0 = Tz[2,k-1]
                     # For GS and SOR, use new value
                     else
-                        T0 = Tz[m  ,k-1]
+                        T0 = Tz[1,k-1]
                     end
-                    T2 = Tz[m-1,k+1]
+
+                    # Use old T2 value for all cases
+                    T2 = Tz[2,k+1]
                 end
             end
 
@@ -289,39 +305,61 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv)
             C2 = C[3,k]
             B1 = B[k]
 
-
             # Compute Temperature
-            global Tz[m,k] = 1/C1 * (B1 - C2*T2 - C0*T0)
+            Tz[1,k] = 1/C1 * (B1 - C2*T2 - C0*T0)
+
+            r_m[k] = norm(B1 - (C0*T0+C1*Tz[1,k]+C2*T2))
 
             # Apply weights for sucessive overrelaxation
             if Method == 3 && itcnt > 0
-                global Tz[m,k] = ω * Tz[m,k] + (1-ω) * Tz[m-1,k]
+                global Tz[1,k] = ω * Tz[1,k] + (1-ω) * Tz[2,k]
             end
 
+            #Residuals
             #r_m[k] = (C0*T0 + C1*Tz[m,k] + C2*T2 - B1).^2
         end
 
-        # Compute residual
-        #r[m] = sum(r_m,dims=2)[1]
-        x_itr = Tz[m,:]
-        x_err = sqrt.((x_itr' .- x_inv).^2)
-        r[m] =sum(x_err,dims=2)[1]
-        err = r[m]
-
-
-        #@printf("Now on iteration %i with residual %.5E \n",m,err)
-        if mod(m,5000)==0
-            @printf("Now on iteration %i with err %f\n",m,err)
-        end
         itcnt += 1
         m += 1
+
+        r = A_in*Tz[1,:]-B
+        err = norm(r)/length(r)
+
+        # Compute residual but differencing from last iteration
+        err = sum(broadcast(sqrt,abs2.((Tz[1,:]-Tz[2,:])./Tz[1,:])))
+        #r[m] = sum(abs.((Tz[1,:]-Tz[2,:])))#./Tz)))
+        #err = maximum(abs.((Tz[1,:]-Tz[2,:])))#./Tz)))
+        push!(r,m)
+        #r[m] = sum(r_m,dims=2)[1]
+        #x_itr = Tz[1,:]
+        #x_err = sqrt.((x_itr' .- x_inv).^2)
+        #r[m] =sum(x_err,dims=2)[1]
+        #err =
+
+        # Save new Tz profile to Tz0
+        Tz[2,:] = Tz[1,:] # Note that index 2 is the prev
+        #Tz_all[m,:] = Tz[1,:]
+
+        #@printf("Now on iteration %i with residual %.5E \n",m,err)
+        if mod(m,printint)==0
+            @printf("Now on iteration %i with err %f\n",m,err)
+            #@printf("\tTz ")
+            #print(Tz)
+            #@printf("\n\tTz0 ")
+            #print(Tz0)
+
+            #@printf("Now on iteration %i with err %f\n",m,err)
+        end
+
     end
 
-    # Restrict to iteration
-    r  =  r[1:itcnt]
-    Tz = Tz[1:itcnt,:]
 
-    return Tz, itcnt,r
+
+    # Restrict to iteration
+    #r  =  r[1:itcnt]
+    #Tz = Tz[1:itcnt,:]
+
+    return Tz, itcnt,r#, Tz_all
 end
 """
 FD_inv_sol -------------------------------------------
@@ -351,6 +389,7 @@ function FD_inv_sol(A,B)
    return A_tri,x
 end
 
+#err = B .- Tridiagonal(C[1,2:end],C[2,:],C[3,1:end-1])*Tz'
 
 #Make κ
 κ = FD_make_κ(mld,levels,kmax,κ_mld,κ_int)
@@ -359,18 +398,23 @@ end
 S   = FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0,mld)
 
 # Calculate Coefficients
-C,B_new = FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b)
+C,B_new,A_in = FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b)
 
 # Get Solution via inverting matrix
 C_new,Tz_inv = FD_inv_sol(C,B_new)
 
 # Calculate T
-Tz_new,itcnt,resid = FD_calc_T(C,B_new,x_g,tol,method,max_iter,ω,Tz_inv)
+Tz_new,itcnt,resid = FD_calc_T(C,B_new,x_g,tol,method,max_iter,ω,Tz_inv,printint,A)
 
+# ----------------------
+# Julia Error
+r  = Ax-b
+err= norm(r)/sqrt(r)    # Sum of the squares
 
+# ----------------------
 #
 # Plotting Comparison between inverted solution and iterated
-gr()
+#gr()
 p = plot(Tz_inv[end,:],levels,
         title="Temperature Profiles",
         xlabel="Temperature(°C)",
@@ -383,7 +427,7 @@ p = plot(Tz_inv[end,:],levels,
         linecolor=:black,
         labels="Solution (Inversion)",
         legend=:topleft)
-p=plot!(Tz_new[end,:],levels,
+p=plot!(Tz_new[1,:],levels,
         lw = 1,
         linecolor=:red,
         labels="Solution (Iteration) x" * string(itcnt))#,
@@ -402,7 +446,12 @@ savefig(p,"HW1_Solution.svg")
 #         fmt=png)
 
 
-
+# p = plot(Tz_new',levels,
+#         xlabel="Temp",
+#         ylabel="Depth",
+#         yticks = 0:100:1000,
+#         yflip=true,
+#         fmt=png)
 # ## ---------------------------------------
 # ## Convergence test with different methods
 # ## ---------------------------------------
