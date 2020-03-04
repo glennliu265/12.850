@@ -8,7 +8,7 @@ using LinearAlgebra
 # User Edits
 # -------------------------------------------------------
 # Grid Parameters (Convention will be 1 = bottom)
-levels    = collect(1000:-1:0)     #
+levels    = collect(1000:-100:0)     #
 #lowerlev = collect(1000:-100:300)
 #upperlev = collect(390:-10:0)
 #levels = vcat(lowerlev,upperlev)
@@ -19,23 +19,23 @@ z_c       = ones(Int8,1,kmax+1)*1  # Height of each cell # Distance between cell
 #z_c = hcat(ones(Int8,1,length(lowerlev))*100,ones(Int8,1,length(upperlev))*10)
 
 # Source/Sink Options --------------------------
-z_att     =  400  # Attenuation depth for source
+z_att     =  400   # Attenuation depth for source
 ocn_trns  = 0.43   # Transmitted portion through ocn surface
-S0        =  125  # Constant multiplying source term
+S0        =  125   # Constant multiplying source term
 cp0       = 3850   # J(kg*C)
 rho       = 1025   # kg/m^3
 
 # Eddy Diffusivity Options --------------------------
 mld       =  300  # Mixed Layer Depth
-κ_mld     = 10^0 # Eddy Diffusivity in mixed-layer
-κ_int     = 10^-2 #Eddy Diffusivity in the interior
+κ_mld     = 10^-1 # Eddy Diffusivity in mixed-layer
+κ_int     = 10^-4 #Eddy Diffusivity in the interior
 
 # Iteration Parameters ------------------------------
-tol       = 1e-5
+tol       = 1e-12
 x_g       = collect(5:5/(kmax-1):10)#ones(kmax)*5
 ω         = 1.9
-max_iter  = 200000
-printint  = 50000
+max_iter  = 10379
+printint  = 100000
 method    = 3
 
 # Setting Boundary Conditions --------------------------
@@ -235,8 +235,12 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
 
     # Preallocate Arrays [1 x # of cells]
     Tz  = zeros(Float64,2,length(x_g)) # Array for current profile (itr=m)
-    Tz0 = zeros(Float64,1,length(x_g)) # Array for prev. profile (itr=m-1)
-    r  = Float64[]#zeros(Float64,max_iter+1)       # Array of residuals
+
+    # Input Initial Guess(2nd row of Tz)
+    Tz[2,:] = x_g
+
+    r   = Float64[]#zeros(Float64,max_iter+1)
+
     #Tz_all = zeros(Float64,max_iter,length(x_g))
 
     # Set up counters and indexing
@@ -244,58 +248,41 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
     m     = 0     # Iteration Storage Number
     err   = tol+1 # initial value, pre error calculation (need to set up for the diff between guess and actual)
 
-    while  m <= max_iter #|| err > tol
+    while  err > tol #m <= max_iter #|| err > tol
         #@printf("Starting iter %i...",m)
         r_m  = zeros(Float64,1,kmax+1)
         for k = 1:kmax
 
+            # First Cell
+            if k == 1
+                T0 = 0
+                T2 = Tz[2,k+1] # Take T2 from last iteration (or init guess)
 
+            # Last Cell
+            elseif k == kmax
+                # For Jacobi Method, use previous values (Row 2 of Tz)
+                if Method == 1
+                    T0 = Tz[2,k-1]
 
-            # Get temperature values
-            # Use Initial Guess for first iteration
-            if itcnt == 0
-                # 1st Cell
-                if k == 1
-
-                    T0 = 0
-                    T2 = x_g[k+1]
-                # Last Cell
-                elseif k == kmax
-                    T0 = x_g[k-1]
-                    T2 = 0
-                # Interior Cells
+                # For GS and SOR, use new value (Row 1 of Tz)
                 else
-                    T0 = x_g[k-1]
-                    T2 = x_g[k+1]
+                    T0 = Tz[1,k-1]
                 end
+
+                T2 = 0
+
+            # Interior Cells
             else
-                # First Cell
-                if k == 1
-                    T0 = 0
-                    T2 = Tz[2,k+1]
-                # Last Cell
-                elseif k == kmax
-                    # For Jacobi Method, use previous values (Tz[2,:])
-                    if Method == 1
-                        T0 = Tz[2,k-1]
-                    # For GS and SOR, use new value (Tz)
-                    else
-                        T0 = Tz[1,k-1]
-                    end
-                    T2 = 0
-                # Interior Cells
+                # For Jacobi Method, use previous values (row 2 Tz)
+                if Method == 1
+                    T0 = Tz[2,k-1]
+                # For GS and SOR, use new value (row 1 Tz)
                 else
-                    # For Jacobi Method, use previous values
-                    if Method == 1
-                        T0 = Tz[2,k-1]
-                    # For GS and SOR, use new value
-                    else
-                        T0 = Tz[1,k-1]
-                    end
-
-                    # Use old T2 value for all cases
-                    T2 = Tz[2,k+1]
+                    T0 = Tz[1,k-1]
                 end
+
+                # Use old T2 value for all cases
+                T2 = Tz[2,k+1]
             end
 
             # Get Coefficients and Source Term
@@ -306,43 +293,66 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
             B1 = B[k]
 
             # Compute Temperature
-            Tz[1,k] = 1/C1 * (B1 - C2*T2 - C0*T0)
-
-            r_m[k] = norm(B1 - (C0*T0+C1*Tz[1,k]+C2*T2))
+            T1 = 1/C1 * (B1 - C2*T2 - C0*T0)
+            r_m[k] = C0*T0+C1*T1+C2*T2 - B1
 
             # Apply weights for sucessive overrelaxation
             if Method == 3 && itcnt > 0
-                global Tz[1,k] = ω * Tz[1,k] + (1-ω) * Tz[2,k]
+                global Tz[1,k] = ω * T1 + (1-ω) * Tz[2,k]
+            else
+                global Tz[1,k] = T1
             end
 
             #Residuals
             #r_m[k] = (C0*T0 + C1*Tz[m,k] + C2*T2 - B1).^2
+            if mod(m,printint)==0
+                #@printf("\tIT: %i k=%i with err %e\n",m,k,r_m[k])
+            end
         end
 
         itcnt += 1
         m += 1
 
-        r = A_in*Tz[1,:]-B
-        err = norm(r)/length(r)
+        # Cora's Method
+        #r   = A_in*Tz[1,:]-B
+        #err = norm(r)
+        #err = sqrt(sum(r_m.^2)/length(r))
+
+        # Tridiag method
+        du = C[3,1:end-1] # Upper diagonal
+        dl = C[1,2:end]   # Lower diagonal
+        d  = C[2,:]       # Diagonal
+
+        C_tri = Tridiagonal(dl,d,du)
+
+        # Calculate residual
+        err = norm(C_tri*Tz[1,:] - B)
 
         # Compute residual but differencing from last iteration
-        err = sum(broadcast(sqrt,abs2.((Tz[1,:]-Tz[2,:])./Tz[1,:])))
+        #err = maximum(broadcast(sqrt,abs2.((Tz[1,:]-Tz[2,:])./Tz[1,:])))
+        #err = sqrt(sum(norm(Tz[1,:]-Tz[2,:])))#./Tz[1,:])))
+        #err = norm(Tz[1,:]-Tz[2,:])/length(Tz)
         #r[m] = sum(abs.((Tz[1,:]-Tz[2,:])))#./Tz)))
         #err = maximum(abs.((Tz[1,:]-Tz[2,:])))#./Tz)))
-        push!(r,m)
+
         #r[m] = sum(r_m,dims=2)[1]
         #x_itr = Tz[1,:]
         #x_err = sqrt.((x_itr' .- x_inv).^2)
         #r[m] =sum(x_err,dims=2)[1]
-        #err =
+        #err = sum(x_err,dims=2)[1]
+
+        # Push calculated error to residual variable
+        push!(r,err)
 
         # Save new Tz profile to Tz0
         Tz[2,:] = Tz[1,:] # Note that index 2 is the prev
+
+        # Save Tz profile to corresponding index on storage
         #Tz_all[m,:] = Tz[1,:]
 
         #@printf("Now on iteration %i with residual %.5E \n",m,err)
         if mod(m,printint)==0
-            @printf("Now on iteration %i with err %f\n",m,err)
+            @printf("Now on iteration %i with resid %f\n",m,err)
             #@printf("\tTz ")
             #print(Tz)
             #@printf("\n\tTz0 ")
@@ -392,30 +402,30 @@ end
 #err = B .- Tridiagonal(C[1,2:end],C[2,:],C[3,1:end-1])*Tz'
 
 #Make κ
-κ = FD_make_κ(mld,levels,kmax,κ_mld,κ_int)
+κ                  = FD_make_κ(mld,levels,kmax,κ_mld,κ_int)
 
 # Calculate I
-S   = FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0,mld)
+S                  = FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0,mld)
 
 # Calculate Coefficients
-C,B_new,A_in = FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b)
+C,B_new,A_in       = FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b)
 
 # Get Solution via inverting matrix
-C_new,Tz_inv = FD_inv_sol(C,B_new)
+C_new,Tz_inv       = FD_inv_sol(C,B_new)
 
 # Calculate T
-Tz_new,itcnt,resid = FD_calc_T(C,B_new,x_g,tol,method,max_iter,ω,Tz_inv,printint,A)
+Tz_new,itcnt,resid = FD_calc_T(C,B_new,x_g,tol,method,max_iter,ω,Tz_inv,printint,A_in)
 
 # ----------------------
 # Julia Error
-r  = Ax-b
-err= norm(r)/sqrt(r)    # Sum of the squares
+#r  = Ax-b
+#err= norm(r)/sqrt(r)    # Sum of the squares
 
 # ----------------------
 #
 # Plotting Comparison between inverted solution and iterated
 #gr()
-p = plot(Tz_inv[end,:],levels,
+plot(Tz_inv[end,:],levels,
         title="Temperature Profiles",
         xlabel="Temperature(°C)",
         ylabel="Depth (m)",
@@ -427,11 +437,11 @@ p = plot(Tz_inv[end,:],levels,
         linecolor=:black,
         labels="Solution (Inversion)",
         legend=:topleft)
-p=plot!(Tz_new[1,:],levels,
+plot!(Tz_new[1,:],levels,
         lw = 1,
         linecolor=:red,
         labels="Solution (Iteration) x" * string(itcnt))#,
-savefig(p,"HW1_Solution.svg")
+#savefig(p,"HW1_Solution.svg")
 #         xlabel="Temp",
 #         ylabel="Depth",
 #         yticks = 0:100:1000,
