@@ -257,6 +257,9 @@ module ocnmod
 
                 # Compute Temperature
                 T1 = 1/C1 * (B1 - C2*T2 - C0*T0)
+
+
+                # need to compute this outside (with Tm+1 rather than with components)
                 r_m[k] = C0*T0+C1*T1+C2*T2 - B1
 
                 # Apply weights for sucessive overrelaxation
@@ -288,7 +291,7 @@ module ocnmod
 
             C_tri = Tridiagonal(dl,d,du)
 
-            # Calculate residual
+            # Calculate residual (can do this more efficiently iteratively)
             err = norm(C_tri*Tz[1,:] - B)
 
             # Compute residual but differencing from last iteration
@@ -327,9 +330,6 @@ module ocnmod
             end
 
         end
-
-
-
         # Restrict to iteration
         #r  =  r[1:itcnt]
         #Tz = Tz[1:itcnt,:]
@@ -367,4 +367,195 @@ module ocnmod
         x = B' * inv(A_tri)
        return A_tri,x
     end
+
+
+        """
+        -----------------------------------------------------------
+        CN_solver
+        -----------------------------------------------------------
+            For a steady state, 1-D Diffusion Problem
+            Solves Ax = B using one of the following iterative methods
+            (1) Jacobi (2) Gauss-Siedel (3) Successive Overrelaxation,
+            where A is the sparse matrix of coefficients given by C,
+            x is the temperature profile and B is the source term.
+
+            Begins with an initial guess, x and iterates until the residual
+            (sum of(Ax-B)^2) is below the tolerance level
+
+            Note that input 8 is temporary (need to figure out correct
+            way to compute residuals)
+
+            Input
+                1) C       - coefficients
+                2) B       - source term
+                3) x_g     - array of initial guesses
+                4) tol     - tolerance level for residual
+                5) Method  - (1) Jacobi, (2) Gauss-Siedel, (3) SOR
+                6) max_iter - maximum number of iterations
+                7) ω       - weights for successive overrelaxation
+                8) x_inv   - Inverted solution for error calculation
+            """
+        function CN_solver(kmax,C,Sr,Sl,B,x_g,x_init,printint,Method,ω,θ)
+            allstart = time()
+
+            # Premultiply arrays based on theta
+            # LHS - For timestep (n+1), multiply by θ
+            l_mult = -Δt/(θ)
+            B      = B  .* l_mult
+            Sl     = Sl .* l_mult
+            # RHS - For timestep (n)  , multiply by 1-θ
+            r_mult =  szΔt/(1-θ)
+            C      = C  .* r_mult
+            Sr     = Sr .* r_mult
+
+            # Preallocate Arrays [1 x # of cells]
+            Tz  = zeros(Float64,2,kmax) # Array for current profile (itr=m)
+
+            # Input Initial Guess(2nd row of Tz)
+            Tz[2,:] = x_g
+
+            r   = Float64[]#zeros(Float64,max_iter+1)
+
+            #Tz_all = zeros(Float64,max_iter,length(x_g))
+
+            # Set up counters and indexing
+            itcnt = 0     # Count of Iterations
+            m     = 0     # Iteration Storage Number
+            err   = tol+1 # initial value, pre error calculation (need to set up for the diff between guess and actual)
+
+            while  err > tol #m <= max_iter #|| err > tol
+                start = time()
+                for k = 1:kmax
+
+                    # First Cell
+                    if k == 1
+                        # Set bottom flux to 0 (included with Forcing Term)
+                        Tr0 = 0
+                        Tl0 = 0
+
+                        # For top flux, rhs = IC, lhs = init. guess
+                        Tr2 = x_init[k+1]
+                        Tl2 = Tz[2,k+1]
+
+                    # Last Cell
+                    elseif k == kmax
+
+                        # For Jacobi Method, use previous values (Row 2 of Tz)
+                        if Method == 1
+                            Tr0 = 
+                            Tl0 = Tz[2,k-1]
+
+                        # For GS and SOR, use new value (Row 1 of Tz)
+                        else
+                            T0 = Tz[1,k-1]
+                        end
+
+                        T2 = 0
+
+                    # Interior Cells
+                    else
+                        # For Jacobi Method, use previous values (row 2 Tz)
+                        if Method == 1
+                            T0 = Tz[2,k-1]
+                        # For GS and SOR, use new value (row 1 Tz)
+                        else
+                            T0 = Tz[1,k-1]
+                        end
+
+                        # Use old T2 value for all cases
+                        T2 = Tz[2,k+1]
+                    end
+
+                    # RHS Variables
+                    Tr0 = x_init[k-1] # Need to adjust for the first and last iteration
+                    Tr1 = x_init[k]
+                    Tr2 = x_init[k+1]
+                    Srr = Sr[k] #* ((1-θ)/Δt)
+                    C0  = C[1,k]
+                    C1  = C[2,k] + 1#((1-θ)/Δt) # Premultiplied C with Δt/(1-θ)
+                    C2  = C[3,k]
+
+                    # LHS Variables
+                    if itcnt == 0
+                        Tl0 = x_g[k-1]
+                        Tl1 = x_g[k]
+                        Tl2 = x_g[k+1]
+                    else
+                        Tl0 = Tz[2,k-1]
+                        #Tl1 = Tz[2,k]
+                        Tl2 = Tz[2,k+1]
+                    end
+                    Sll= Sl[k] #* (θ/Δt)
+                    B0 = B[1,k]
+                    B1 = B[2,k]  -1 #- (θ/Δt) # Premultiplied B with Δt/(θ)
+                    B2 = B[3,k]
+
+                    # Compute the temperature at the grid cell
+                    rhs = C0*Tr0 + C1*Tr1 + C2*Tr2 + Srr
+                    Tl1 = (1/B1) * (rhs - B0*Tl0 - B2*Tl2 - Sll) # CHECK SLL term
+
+                    # Apply weights for sucessive overrelaxation
+                    if Method == 3 && itcnt > 0
+                        global Tz[1,k] = ω * Tl1 + (1-ω) * Tz[2,k]
+                    else
+                        global Tz[1,k] = Tl1
+                    end
+
+                end
+
+                itcnt += 1
+                m += 1
+
+                # Cora's Method
+                #r   = A_in*Tz[1,:]-B
+                #err = norm(r)
+                #err = sqrt(sum(r_m.^2)/length(r))
+
+                # Tridiag method
+                du = C[3,1:end-1] # Upper diagonal
+                dl = C[1,2:end]   # Lower diagonal
+                d  = C[2,:]       # Diagonal
+
+                C_tri = Tridiagonal(dl,d,du)
+
+                # Calculate residual
+                err = norm(C_tri*Tz[1,:] - B)
+
+                # Push calculated error to residual variable
+                push!(r,err)
+
+                # Save new Tz profile to Tz0
+                Tz[2,:] = Tz[1,:] # Note that index 2 is the prev
+
+                # Save Tz profile to corresponding index on storage
+                #Tz_all[m,:] = Tz[1,:]
+
+                #@printf("Now on iteration %i with residual %.5E \n",m,err)
+
+                elapsed = time() - allstart
+                if mod(m,printint)==0
+                    @printf("Now on iteration %i with resid %.2E in %fs\n",m,err,elapsed)
+                    #@printf("\tTz ")
+                    #print(Tz)
+                    #@printf("\n\tTz0 ")
+                    #print(Tz0)
+
+                    #@printf("Now on iteration %i with err %f\n",m,err)
+                end
+
+            end
+
+
+
+            # Restrict to iteration
+            #r  =  r[1:itcnt]
+            #Tz = Tz[1:itcnt,:]
+            elapsed = time()-allstart
+            @printf("Completed in %i iterations with resid %.2E. Only took %fs\n",itcnt,err,elapsed)
+            return Tz, itcnt,r#, Tz_all
+        end
+
+
+
+
 end
