@@ -29,8 +29,8 @@ module ocnmod
         #mldout    = argmin(levels.-mld)
         mldout    = length(findall(x->x>mld,levels))
         # Create κ profile [κ0 as part of interior, κ_int]
-        κ         = hcat(ones(Float64,1,mldout + 1)    * κ_int,
-                         ones(Float64,1,kmax - mldout) * κ_mld)
+        κ         = hcat(ones(Float64,1,mldout)        * κ_int,
+                         ones(Float64,1,kmax-1 - mldout) * κ_mld)
        return κ
     end
 
@@ -89,7 +89,8 @@ module ocnmod
         κ,S,                             # κ and Source/Sink Terms
         BC_top,val_top,                  # Bottom BCs
         BC_bot,val_bot,                  # Top BCs
-        z_t,z_b)                         # Top and Bottom heights
+        z_t,z_b,                         # Dist to top/bot face from midpt
+        z_c0,κ0)                         # bottom diffusivity and midpoint dist
 
         # Preallocate
         C = zeros(Float64,3,kmax)
@@ -103,11 +104,11 @@ module ocnmod
         if BC_bot == 1
             # Compute Source Term with BC (Prescribed Temp)
             B[1]   = S[k] - val_bot *
-                     ( (z_b * κ[k-1]) / (z_f[k] * z_c[k-1]) )
+                     ( (z_b * κ0) / (z_f[k] * z_c0) )
 
             # Ck0 remains the same. Multiplier goes on bottom term
-            C[2,1] = (( 2 * κ[k-1]   / z_c[k-1]) +
-                      (     κ[k]     / z_c[k]  )) * -1/z_f[k] # Prescribed Temp
+            C[2,1] = (( 2 * κ0   / z_c0) +
+                      (     κ[k] / z_c[k]  )) * -1/z_f[k] # Prescribed Temp
         # Newmann Bottom
         elseif BC_bot == 2
             # Compute Source Term with BC (Prescribed Flux)
