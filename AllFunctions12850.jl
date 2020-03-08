@@ -102,24 +102,24 @@ module ocnmod
         # Dirichlet Bottom
         if BC_bot == 1
             # Compute Source Term with BC (Prescribed Temp)
-            B[1]   = S[k] + val_bot *
-                     ( (z_t * κ[k+1]) / (z_f[k] * z_c[k+1]) )
+            B[1]   = S[k] - val_bot *
+                     ( (z_b * κ[k-1]) / (z_f[k] * z_c[k-1]) )
 
-            # Ck0 remains the same
-            C[2,1] = ( 2 * κ[k+1]   / (z_f[k] * z_c[k+1]) ) +
-                     (     κ[k]     / (z_f[k] * z_c[k]  ) ) # Prescribed Temp
+            # Ck0 remains the same. Multiplier goes on bottom term
+            C[2,1] = (( 2 * κ[k-1]   / z_c[k-1]) +
+                      (     κ[k]     / z_c[k]  )) * -1/z_f[k] # Prescribed Temp
         # Newmann Bottom
         elseif BC_bot == 2
             # Compute Source Term with BC (Prescribed Flux)
-            global B[1]   = S[k] + val_bot / z_f[k]
+            global B[1]   = S[k] - val_bot / z_f[k]
 
             # Ck2 remains the same, Ck1 dep. on BCs
-            C[2,1] = κ[k+1] / (z_f[k] * z_c[k+1])
+            C[2,1] = κ[k] / (z_f[k] * z_c[k])
         end
 
         # Set C(k,k-1) to 0, and set C(k,k+1) to the usual
         C[1,1] = 0
-        C[3,1] = -κ[k+1]   / (z_f[k] * z_c[k+1])
+        C[3,1] = κ[k]   / (z_f[k] * z_c[k])
 
         # Options for top boundary ----------------------------------------
         k = kmax
@@ -128,32 +128,32 @@ module ocnmod
         if BC_top == 1
 
             # Compute Source Term with BC (Prescribed Temp)
-            B[kmax]   = S[k] + val_top * ( (z_t * κ[k+1]) / (z_f[k] * z_c[k+1]) )
+            B[kmax]   = S[k] - val_top * ( (z_t * κ[k]) / (z_f[k] * z_c[k]) )
 
             # Calculate C(k,k)
-            C[2,kmax] = ( 2 * κ[k+1]   / (z_f[k] * z_c[k+1]) ) +
-                     (     κ[k]     / (z_f[k] * z_c[k]  ) ) # Prescribed Temp
+            C[2,kmax] = (( 2 * κ[k]   / z_c[k]  ) +
+                         (     κ[k-1] / z_c[k-1])) * -1/z_f[k] # Prescribed Temp
 
         # Neumann Top
         elseif BC_top == 2
             # Compute Source Term with BC (Prescribed Flux)
-            global B[kmax]   = S[k] - val_top / z_f[k] # CHANGE THIS
+            global B[kmax]   = S[k] - val_top / z_f[k]
 
             # Calculate C(k,k)
-            C[2,kmax] = κ[k] / (z_f[k] * z_c[k])# This depends on the type of BC
+            C[2,kmax] = κ[k-1] / (z_f[k] * z_c[k-1])# This depends on the type of BC
 
         end
 
         # Set C(k,k+1) to 0, and set C(k,k-1) to the usual
-        C[1,kmax] = -κ[k]     / (z_f[k] * z_c[k]  )
+        C[1,kmax] = κ[k-1]     / (z_f[k] * z_c[k-1])
         C[3,kmax] = 0
 
         # Options for interior ----------------------------------------------------
         for k = 2:kmax-1
             B[k] = S[k]
             # Compute Coefficients
-            C[1,k] = -κ[k]     / (z_f[k] * z_c[k]  )
-            C[3,k] = -κ[k+1]   / (z_f[k] * z_c[k+1])
+            C[1,k] = κ[k-1]     / (z_f[k] * z_c[k-1]  )
+            C[3,k] = κ[k]   / (z_f[k] * z_c[k])
             C[2,k] = (C[1,k] + C[3,k]) * -1 # Note this might only work in certain cases
         end
 
@@ -432,14 +432,14 @@ module ocnmod
 
         # Determine LHS and RHS multipliers
         # LHS - For timestep (n+1), multiply by θ
-        l_mult = -Δt/(θ)
+        l_mult =  Δt*(θ)
         # RHS - For timestep (n)  , multiply by 1-θ
-        r_mult =  Δt/(1-θ)
+        r_mult =  Δt*(1-θ)
 
         # Meth1: Add Timestep corrections first
         if meth == 1
             C[2,:] = C[2,:] .+ (1/r_mult)
-            B[2,:] = B[2,:] .+ (1/l_mult)
+            B[2,:] = B[2,:] .- (1/l_mult)
         end
 
         # Multiply variables by time and theta factors
@@ -449,6 +449,7 @@ module ocnmod
         fr     = fr .* r_mult
 
         # Meth2: Add single digit post-multiplication
+        # To diagonal (Ck,Bk)
         if meth == 2
             C[2,:] = C[2,:] .+ 1
             B[2,:] = B[2,:] .+ 1
@@ -456,8 +457,8 @@ module ocnmod
 
         # Now combine terms
         C_tri = makeTridiag(C)
-        b     = C_tri * IC + fr - fl # Bring Sl from left side
-        A     = B
+        b     = C_tri * IC + fr + fl # Bring Sl from left side
+        A     = -B
 
         elapsed = time() - start
         #@printf("Completed matrix prep in %fs\n",elapsed)
