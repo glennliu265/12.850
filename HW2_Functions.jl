@@ -3,18 +3,22 @@ using Printf
 using LinearAlgebra
 #using PyPlot
 #using Seaborn
+
 include("AllFunctions12850.jl")
 # -------------------------------------------------------
 # User Edits
 # -------------------------------------------------------
 # Grid Parameters (Convention will be 1 = bottom)
-levels    = collect(1000:-100:0)     #
+levels    = collect(1000:-100:0)
+mpts      = ocnmod.get_midpoints(levels)
 #lowerlev = collect(1000:-100:300)
 #upperlev = collect(390:-10:0)
 #levels = vcat(lowerlev,upperlev)
-kmax      = length(levels)         # maximum index of k
-z_f       = ones(Int8,1,kmax)*1   # Height of each cell
-z_c       = ones(Int8,1,kmax+1)*1  # Height of each cell # Distance between cell midpoints
+δz        = (levels[2]-levels[1])*-1  # Cell Height (Constant for now)
+kmax      = length(mpts)          # maximum index of k
+z_f       = ones(Int8,1,kmax)*δz    # Height of each cell
+z_c       = ones(Int8,1,kmax)*δz  # Height of each cell # Distance between cell midpoints
+z_c0      = δz                      # Distance to bottom midpoint
 #z_f =hcat(ones(Int8,1,length(lowerlev)-1)*100,ones(Int8,1,length(upperlev)+1)*10)
 #z_c = hcat(ones(Int8,1,length(lowerlev))*100,ones(Int8,1,length(upperlev))*10)
 
@@ -27,12 +31,13 @@ rho       = 1025   # kg/m^3
 
 # Eddy Diffusivity Options --------------------------
 mld       =  300  # Mixed Layer Depth
-κ_mld     = 10^-6 # Eddy Diffusivity in mixed-layer
-κ_int     = 10^-6 #Eddy Diffusivity in the interior
+κ_mld     = 10^-4 # Eddy Diffusivity in mixed-layer
+κ_int     = 10^-4 #Eddy Diffusivity in the interior
+κ0        = κ_int
 
 # Iteration Parameters ------------------------------
 tol       = 1e-12
-x_g       = collect(5:5/(kmax-1):10)#ones(kmax)*5
+x_g       = collect(5:5/(kmax):10)#ones(kmax)*5
 ω         = 1.9
 max_iter  = 10379
 printint  = 1e6
@@ -45,44 +50,51 @@ BC_top    = 2    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 BC_bot    = 1   # Bot BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 
 val_top   = S0/(cp0*rho*mld) # For this case, I use a flux
-val_bot   = 5   # In this case, I just prescribe a temperature at the boundary
+val_bot   = ones(Int8,12).*5   # In this case, I just prescribe a temperature at the boundary
 
-z_t       = 2
-z_b       = 2
+z_t       = 2#δz/2
+z_b       = 200#δz/2
 
-x_init    = ones(Float64,kmax)*5 # Initial Temperature Profile
+x_init    = ones(Float64,kmax)*0 # Initial Temperature Profile
 
 # Timestepping Options (current model is in seconds)
 # Use mean MLD (200)
-Δt     = 3600*24#1 * 3600 * 24 * 30     # One Month Resolution
-ts_max = 30#3 * 12   * Δt      # Years of integration
+Δt     = 3600*24*30*12#1 * 3600 * 24 * 30     # One Month Resolution
+ts_max = 36#3 * 12   * Δt      # Years of integration
 #mld_cycle   = sin.((pi/6).*[1:12;]).*100 .+ 200
+
 mld_cycle = ones(Int8,12)*200
 θ = 0.5
 
 # Vary Forcing
 # Use mean FSNS (110) and max/min of around 20-200
 #I_cycle   = sin.((pi/6).*[1:12;].-(pi/2)).*90 .+ 110
-I_cycle = sin.((pi/6).*[1:12;].-(pi/2)).*90
+I_cycle = sin.((pi/6).*[1:12;].-(pi/2)).*S0
+#I_cycle = ones(Int8,12)*S0
+
 # -------------------------------------------------------
 # Make κ (seasonal)
 # -------------------------------------------------------
-κ_seas = zeros(Float64,12,kmax+1) # Preallocate
+κ_seas = zeros(Float64,12,kmax) # Preallocate
 for imon = 1:12
-        κ_seas[imon,:] = ocnmod.FD_make_κ(mld_cycle[imon],levels,kmax,κ_mld,κ_int)
+        κ_seas[imon,:] = ocnmod.FD_make_κ(mld_cycle[imon],mpts,kmax,κ_mld,κ_int)
 end
+
 # plot(κ_seas')
 
 # -------------------------------------------------------
 # Calculate Q_seasonal [month x profile]
 # -------------------------------------------------------
 Q_seas  = zeros(Float64,12,kmax) # Preallocate
-val_top = zeros(Float64,12)
 for imon = 1:12
-        Q_seas[imon,:] = ocnmod.FD_calc_I(levels,z_f,z_att,I_cycle[imon],ocn_trns,rho,cp0,mld_cycle[imon])
+        Q_seas[imon,:] = ocnmod.FD_calc_I(mpts,z_f,z_att,I_cycle[imon],ocn_trns,rho,cp0,mld_cycle[imon])
+end
+# Change surface flux to cycle seasonally
+if BC_top == 2
         val_top        = I_cycle ./ (cp0.*rho.*mld_cycle)
 end
 # plot(Q_seas')
+#plot([1:12;],val_top[:])
 
 # -------------------------------------------------------
 # Calculate seasonal matrices
@@ -93,7 +105,7 @@ A_in  = zeros(Float64,12,kmax,kmax)
 # Compute matrices for each mmonth
 for imon = 1:12
         # Calculate Coefficients
-        C[imon,:,:],S_new[imon,:],A_in[imon,:,:] = ocnmod.FD_calc_coeff(kmax,z_f,z_c,κ_seas[imon,:],Q_seas[imon,:],BC_top,val_top[imon],BC_bot,val_bot,z_t,z_b)
+        C[imon,:,:],S_new[imon,:],A_in[imon,:,:] = ocnmod.FD_calc_coeff(kmax,z_f,z_c,κ_seas[imon,:],Q_seas[imon,:],BC_top,val_top[imon],BC_bot,val_bot[imon],z_t,z_b,z_c0,κ0)
 end
 
 # -------------------------------------------------------
@@ -102,9 +114,14 @@ end
 #Preallocate
 Tprof  = zeros(Float64,ts_max+1,kmax)
 Tz_inv = zeros(Float64,ts_max+1,kmax)
+b_ts   = zeros(Float64,ts_max,kmax)
+sr_ts =  zeros(Float64,ts_max,kmax)
+sl_ts = zeros(Float64,ts_max,kmax)
+t0_ts = zeros(Float64,ts_max,kmax)
 
 Tprof[1,:] = x_init
 Tz_inv[1,:] = x_init
+
 for i = 1:ts_max
     loopstart = time()
     m = i%12
@@ -123,92 +140,138 @@ for i = 1:ts_max
     Sl_in = S_new[nm,:,:]
     B_in  = C[nm,:,:]
 
+    # if any(x -> x < 0, Sr_in)
+    #         @printf("\tLoop %i has negative in Sr\n",i)
+    #         #b = b .* -1
+    # end
+    # if any(x -> x < 0, Sl_in)
+    #         @printf("\tLoop %i has negative in Sl\n",i)
+    #         #b = b .* -1
+    # end
+    # if any(x -> x < 0, B_in)
+    #         @printf("\tLoop %i has negative in B\n",i)
+    #         #b = b .* -1
+    # end
+    # if any(x -> x < 0, C_in)
+    #         @printf("\tLoop %i has negative in C\n",i)
+    #         #b = b .* -1
+    # end
+
     # Prepare matrices
-    A,b = ocnmod.CN_make_matrix(Δt,θ,Tprof[i,:],C_in,B_in,Sr_in,Sl_in,2);
+    kprint = 1
+    A,b,t0 = ocnmod.CN_make_matrix(Δt,θ,Tprof[i,:],C_in,B_in,Sr_in,Sl_in,1,kprint);
+
+    if any(x -> x < 0, b)
+            #@printf("\tLoop %i has negative in b\n",i)
+            #b = b .* -1
+    end
+
+
 
     # Get Solution via inverting matrix
     ~,Tz_inv[i+1,:]       = ocnmod.FD_inv_sol(A,b)
+
+    # Change this later, but currently puts inverted profile as next step
     Tprof[i+1,:] = Tz_inv[i+1,:]
+    b_ts[i,:] = b
+    sr_ts[i,:] = Sr_in
+    sl_ts[i,:] = Sl_in
+    t0_ts[i,:] = t0
+
+    if any(x -> x < 0, Tz_inv[i+1,:])
+            #@printf("\tLoop %i has negative in Tz_inv\n",i)
+            #Tz_inv[i+1,:] = Tz_inv[i+1,:] .* -1
+    end
+
     elapsed = loopstart - time()
-    if i%1==0
+    if i%4==0
         @printf("Loop %i finished in %fs\n",i,elapsed)
+        @printf("\tTop Temp is %.2E\n",Tz_inv[i,end])
+        @printf("\tFt       is %.2E\n",b[end])
+        @printf("\n")
     end
 end
 
 
 
+
+# Anim Example
 anim = @animate for i ∈ 1:ts_max
-    p=plot(Tz_inv[i,:],levels,
+    p=plot(Tz_inv[i,:],mpts,
             title="Temperature Profiles t="*string(i),
             xlabel="Temperature(°C)",
             ylabel="Depth (m)",
             yticks = 0:100:1000,
             yflip=true,
-            xlims=(-10, 30),
+            xlims=(-20, 20),
             lw=2.5,
             linestyle=:dot,
             linecolor=:black,
             labels="Solution (Inversion)")
 end
-gif(anim,"TempProfanim_m2.gif",fps=2)
-
-i=83456
-p=plot(Tz_inv[i ,:],levels,
-        title="Temperature Profiles t="*string(i),
-        xlabel="Temperature(°C)",
-        ylabel="Depth (m)",
-        yticks = 0:100:1000,
-        yflip=true,
-        xlims=(-10, 30),
-        lw=2.5,
-        linestyle=:dot,
-        linecolor=:black,
-        labels="Solution (Inversion)")
-
-    # # Iterate to find solution
-    # Tprof[m,:],itcnt,resid = ocnmod.CN_solver(kmax,A,Sr_in,Sl_in,B_in,
-    #                                             x_g,x_init,printint,
-    #                                             Method,ω,θ)
-
-                                                # Calculate T
-  # Tprof[m,:],itcnt,resid = ocnmod.FD_calc_T(A,b,x_g,tol,method,max_iter,ω,Tz_inv,printint,A_in)
-  #
+gif(anim,"TempProfanim_m2.gif",fps=4)
 
 
-
-
-
-end
-
-
-
-end
 
 #
-# # Get Solution via inverting matrix
-# C_new,Tz_inv       = ocnmod.FD_inv_sol(C,B_new)
-
-# Calculate T
-Tz_new,itcnt,resid = ocnmod.FD_calc_T(kmax,C,B_new,x_g,tol,method,max_iter,ω,printint,A_in)
-
-# Plotting Comparison between inverted solution and iterated
-#gr()
-plot(Tz_inv[end,:],levels,
-        title="Temperature Profiles",
-        xlabel="Temperature(°C)",
-        ylabel="Depth (m)",
-        yticks = 0:100:1000,
-        yflip=true,
-        fmt=png,
-        lw=2.5,
-        linestyle=:dot,
-        linecolor=:black,
-        labels="Solution (Inversion)",
-        legend=:topleft)
-plot!(Tz_new[1,:],levels,
-        lw = 1,
-        linecolor=:red,
-        labels="Solution (Iteration) x" * string(itcnt))#,
+#
+# i=83456
+# p=plot(Tz_inv[i ,:],levels,
+#         title="Temperature Profiles t="*string(i),
+#         xlabel="Temperature(°C)",
+#         ylabel="Depth (m)",
+#         yticks = 0:100:1000,
+#         yflip=true,
+#         xlims=(-10, 30),
+#         lw=2.5,
+#         linestyle=:dot,
+#         linecolor=:black,
+#         labels="Solution (Inversion)")
+#
+#     # # Iterate to find solution
+#     # Tprof[m,:],itcnt,resid = ocnmod.CN_solver(kmax,A,Sr_in,Sl_in,B_in,
+#     #                                             x_g,x_init,printint,
+#     #                                             Method,ω,θ)
+#
+#                                                 # Calculate T
+#   # Tprof[m,:],itcnt,resid = ocnmod.FD_calc_T(A,b,x_g,tol,method,max_iter,ω,Tz_inv,printint,A_in)
+#   #
+#
+#
+#
+#
+#
+# end
+#
+#
+#
+# end
+#
+# #
+# # # Get Solution via inverting matrix
+# # C_new,Tz_inv       = ocnmod.FD_inv_sol(C,B_new)
+#
+# # Calculate T
+# Tz_new,itcnt,resid = ocnmod.FD_calc_T(kmax,C,B_new,x_g,tol,method,max_iter,ω,printint,A_in)
+#
+# # Plotting Comparison between inverted solution and iterated
+# #gr()
+# plot(Tz_inv[end,:],levels,
+#         title="Temperature Profiles",
+#         xlabel="Temperature(°C)",
+#         ylabel="Depth (m)",
+#         yticks = 0:100:1000,
+#         yflip=true,
+#         fmt=png,
+#         lw=2.5,
+#         linestyle=:dot,
+#         linecolor=:black,
+#         labels="Solution (Inversion)",
+#         legend=:topleft)
+# plot!(Tz_new[1,:],levels,
+#         lw = 1,
+#         linecolor=:red,
+#         labels="Solution (Iteration) x" * string(itcnt))#,
 #savefig(p,"HW1_Solution.svg")
 #         xlabel="Temp",
 #         ylabel="Depth",
@@ -369,3 +432,43 @@ plot!(Tz_new[1,:],levels,
 #     label="Step @ 300 m" * string(maxit_byK[3]),
 #     layout=(1,2))
 # savefig(plot_K,"HW1_K.svg")
+#
+# # Test CN Make Matrix
+# IC = x_init
+# C  = C_in
+# B = B_in
+# fr = Sr_in
+# fl = Sl_in
+# meth = 1
+#
+#
+# # Determine LHS and RHS multipliers
+# # LHS - For timestep (n+1), multiply by θ
+# l_mult = Δt*(θ)
+# # RHS - For timestep (n)  , multiply by 1-θ
+# r_mult =  Δt*(1-θ)
+#
+# # Meth1: Add Timestep corrections first
+# if meth == 1
+# C[2,:] = C[2,:] .+ (1/r_mult)
+# B[2,:] = B[2,:] .- (1/l_mult)
+# end
+#
+# # Multiply variables by time and theta factors
+# B      = B  .* l_mult
+# fl     = fl .* l_mult
+# C      = C  .* r_mult
+# fr     = fr .* r_mult
+#
+# # Meth2: Add single digit post-multiplication
+# if meth == 2
+# C[2,:] = C[2,:] .+ 1
+# B[2,:] = B[2,:] .+ 1
+# end
+#
+# # Now combine terms
+# C_tri = ocnmod.makeTridiag(C)
+# b     = C_tri * IC + fr + fl # Bring Sl from left side
+# A     = B
+#
+# elapsed = time() - start

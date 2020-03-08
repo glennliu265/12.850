@@ -2,6 +2,28 @@ module ocnmod
     using Plots
     using Printf
     using LinearAlgebra
+
+    """
+    -----------------------------------------------------------
+    get_midpoints
+    -----------------------------------------------------------
+        Get midpoints for an array with the height of each cell face
+
+        Inputs
+            1) levels   = contains height at N levels
+        Outputs
+            1) midpoints = height of each midpoint (N-1 points)
+
+        """
+    function get_midpoints(levels)
+        numpts = length(levels)-1
+        midpoints = zeros(Float64,numpts)
+        for k = 1:numpts
+            midpoints[k] = levels[k] + (levels[k+1]-levels[k])/2
+        end
+       return midpoints
+    end
+
     """
     -----------------------------------------------------------
     FD_make_κ
@@ -30,7 +52,7 @@ module ocnmod
         mldout    = length(findall(x->x>mld,levels))
         # Create κ profile [κ0 as part of interior, κ_int]
         κ         = hcat(ones(Float64,1,mldout)        * κ_int,
-                         ones(Float64,1,kmax-1 - mldout) * κ_mld)
+                         ones(Float64,1,kmax - mldout) * κ_mld)
        return κ
     end
 
@@ -92,6 +114,9 @@ module ocnmod
         z_t,z_b,                         # Dist to top/bot face from midpt
         z_c0,κ0)                         # bottom diffusivity and midpoint dist
 
+        @printf("Applying the following BCs:")
+        @printf("\n\tBottom - Type %i of value %.2E",BC_bot,val_bot)
+        @printf("\n\tTop    - Type %i of value %.2E",BC_top,val_top)
         # Preallocate
         C = zeros(Float64,3,kmax)
         B = zeros(Float64,kmax)
@@ -107,12 +132,12 @@ module ocnmod
                      ( (z_b * κ0) / (z_f[k] * z_c0) )
 
             # Ck0 remains the same. Multiplier goes on bottom term
-            C[2,1] = (( 2 * κ0   / z_c0) +
+            C[2,1] = (( 2 * κ0   / z_c0    ) +
                       (     κ[k] / z_c[k]  )) * -1/z_f[k] # Prescribed Temp
         # Newmann Bottom
         elseif BC_bot == 2
             # Compute Source Term with BC (Prescribed Flux)
-            global B[1]   = S[k] - val_bot / z_f[k]
+            global B[1]   = S[k] + val_bot / z_f[k]
 
             # Ck2 remains the same, Ck1 dep. on BCs
             C[2,1] = κ[k] / (z_f[k] * z_c[k])
@@ -214,7 +239,7 @@ module ocnmod
         while  err > tol #m <= max_iter #|| err > tol
             start = time()
             #@printf("Starting iter %i...",m)
-            r_m  = zeros(Float64,1,kmax+1)
+            #r_m  = zeros(Float64,1,kmax+1)
             for k = 1:kmax
 
                 # First Cell
@@ -261,7 +286,7 @@ module ocnmod
 
 
                 # need to compute this outside (with Tm+1 rather than with components)
-                r_m[k] = C0*T0+C1*T1+C2*T2 - B1
+                #r_m[k] = C0*T0+C1*T1+C2*T2 - B1
 
                 # Apply weights for sucessive overrelaxation
                 if Method == 3 && itcnt > 0
@@ -369,6 +394,7 @@ module ocnmod
        return A_tri,x
     end
     """
+
     -----------------------------------------------------------
     makeTridiag
     -----------------------------------------------------------
@@ -396,6 +422,32 @@ module ocnmod
         return C_tri
     end
 
+    """
+    # Function to print a sample equation
+    """
+
+    function print_exeq(k,kmax,b,C,IC,fr,fl,A)
+        if k == 1
+            IC0 = 0
+            IC2 = IC[k+1]
+        elseif k == kmax
+            IC0 = IC[k-1]
+            IC2  = 0
+        else
+            IC0 = IC[k-1]
+            IC2 = IC[k+1]
+        end
+        @printf("\n For this loop, we have for level %i of %i",k,kmax)
+        @printf("\n\tlhs1: A Matrix:[%.2E, %.2E, %.2E]",A[1,k],A[2,k],A[3,k])
+        @printf("\n\trhs2: C Matrix:[%.2E, %.2E, %.2E]",C[1,k],C[2,k],C[3,k])
+        @printf("\n\trhs3: IC      :[%.2E, %.2E, %.2E]",IC0,IC[k],IC2)
+        @printf("\n\trhs4: fr      :[%.2E]",fr[k])
+        @printf("\n\trhs5: fl      :[%.2E]",fl[k])
+        @printf("\n\trhs5: b       :[%.2E]",b[k])
+        print("\nWhere we have: (1)*u = (2)*(3)+(4)+(5) and...")
+        print("\n\tb =  (2)*(3)+(4)+(5)...")
+        print("\n")
+    end
     """
     -----------------------------------------------------------
     CN_make_matrix
@@ -427,20 +479,20 @@ module ocnmod
             1) b  = premultiplied "Forcing Term" that combines Inputs(3,4,6,7)
             2) A  = premultiplied B matrix
         """
-    function CN_make_matrix(Δt,θ,IC,C,B,fr,fl,meth)
+    function CN_make_matrix(Δt,θ,IC,C,B,fr,fl,meth,kprint)
 
         start = time()
 
         # Determine LHS and RHS multipliers
         # LHS - For timestep (n+1), multiply by θ
-        l_mult =  Δt*(θ)
+        l_mult =  -Δt*(θ)
         # RHS - For timestep (n)  , multiply by 1-θ
         r_mult =  Δt*(1-θ)
 
         # Meth1: Add Timestep corrections first
         if meth == 1
-            C[2,:] = C[2,:] .+ (1/r_mult)
-            B[2,:] = B[2,:] .- (1/l_mult)
+            C[2,:] = C[2,:] .- (1/r_mult)
+            B[2,:] = B[2,:] .+ (1/l_mult)
         end
 
         # Multiply variables by time and theta factors
@@ -458,196 +510,149 @@ module ocnmod
 
         # Now combine terms
         C_tri = makeTridiag(C)
+        t0    = C_tri * IC
         b     = C_tri * IC + fr + fl # Bring Sl from left side
         A     = -B
 
+        k = kprint
+        print_exeq(k,length(fr),b,C,IC,fr,fl,A)
+
         elapsed = time() - start
         #@printf("Completed matrix prep in %fs\n",elapsed)
-        return A,b
+        return A,b,t0
     end
 
-        #
-        #
-        #
-        # """
-        # -----------------------------------------------------------
-        # CN_solver
-        # -----------------------------------------------------------
-        #     For a steady state, 1-D Diffusion Problem
-        #     Solves Ax = B using one of the following iterative methods
-        #     (1) Jacobi (2) Gauss-Siedel (3) Successive Overrelaxation,
-        #     where A is the sparse matrix of coefficients given by C,
-        #     x is the temperature profile and B is the source term.
-        #
-        #     Begins with an initial guess, x and iterates until the residual
-        #     (sum of(Ax-B)^2) is below the tolerance level
-        #
-        #     Note that input 8 is temporary (need to figure out correct
-        #     way to compute residuals)
-        #
-        #     Input
-        #         1) C       - coefficients
-        #         2) B       - source term
-        #         3) x_g     - array of initial guesses
-        #         4) tol     - tolerance level for residual
-        #         5) Method  - (1) Jacobi, (2) Gauss-Siedel, (3) SOR
-        #         6) max_iter - maximum number of iterations
-        #         7) ω       - weights for successive overrelaxation
-        #         8) x_inv   - Inverted solution for error calculation
-        #     """
-        # function CN_solver(kmax,C,Sr,Sl,B,x_g,x_init,printint,Method,ω,θ)
-        #     allstart = time()
-        #
-        #
-        #
-        #     # Preallocate Arrays [1 x # of cells]
-        #     Tz  = zeros(Float64,2,kmax) # Array for current profile (itr=m)
-        #
-        #     # Input Initial Guess(2nd row of Tz)
-        #     Tz[2,:] = x_g
-        #
-        #     r   = Float64[]#zeros(Float64,max_iter+1)
-        #
-        #     #Tz_all = zeros(Float64,max_iter,length(x_g))
-        #
-        #     # Set up counters and indexing
-        #     itcnt = 0     # Count of Iterations
-        #     m     = 0     # Iteration Storage Number
-        #     err   = tol+1 # initial value, pre error calculation (need to set up for the diff between guess and actual)
-        #
-        #     while  err > tol #m <= max_iter #|| err > tol
-        #         start = time()
-        #         for k = 1:kmax
-        #
-        #             # First Cell
-        #             if k == 1
-        #                 # Set bottom flux to 0 (included with Forcing Term)
-        #                 Tr0 = 0
-        #                 Tl0 = 0
-        #
-        #                 # For top flux, rhs = IC, lhs = init. guess
-        #                 Tr2 = x_init[k+1]
-        #                 Tl2 = Tz[2,k+1]
-        #
-        #             # Last Cell
-        #             elseif k == kmax
-        #
-        #                 # For Jacobi Method, use previous values (Row 2 of Tz)
-        #                 if Method == 1
-        #                     Tr0 =
-        #                     Tl0 = Tz[2,k-1]
-        #
-        #                 # For GS and SOR, use new value (Row 1 of Tz)
-        #                 else
-        #                     T0 = Tz[1,k-1]
-        #                 end
-        #
-        #                 T2 = 0
-        #
-        #             # Interior Cells
-        #             else
-        #                 # For Jacobi Method, use previous values (row 2 Tz)
-        #                 if Method == 1
-        #                     T0 = Tz[2,k-1]
-        #                 # For GS and SOR, use new value (row 1 Tz)
-        #                 else
-        #                     T0 = Tz[1,k-1]
-        #                 end
-        #
-        #                 # Use old T2 value for all cases
-        #                 T2 = Tz[2,k+1]
-        #             end
-        #
-        #             # RHS Variables
-        #             Tr0 = x_init[k-1] # Need to adjust for the first and last iteration
-        #             Tr1 = x_init[k]
-        #             Tr2 = x_init[k+1]
-        #             Srr = Sr[k] #* ((1-θ)/Δt)
-        #             C0  = C[1,k]
-        #             C1  = C[2,k] + 1#((1-θ)/Δt) # Premultiplied C with Δt/(1-θ)
-        #             C2  = C[3,k]
-        #
-        #             # LHS Variables
-        #             if itcnt == 0
-        #                 Tl0 = x_g[k-1]
-        #                 Tl1 = x_g[k]
-        #                 Tl2 = x_g[k+1]
-        #             else
-        #                 Tl0 = Tz[2,k-1]
-        #                 #Tl1 = Tz[2,k]
-        #                 Tl2 = Tz[2,k+1]
-        #             end
-        #             Sll= Sl[k] #* (θ/Δt)
-        #             B0 = B[1,k]
-        #             B1 = B[2,k]  -1 #- (θ/Δt) # Premultiplied B with Δt/(θ)
-        #             B2 = B[3,k]
-        #
-        #             # Compute the temperature at the grid cell
-        #             rhs = C0*Tr0 + C1*Tr1 + C2*Tr2 + Srr
-        #             Tl1 = (1/B1) * (rhs - B0*Tl0 - B2*Tl2 - Sll) # CHECK SLL term
-        #
-        #             # Apply weights for sucessive overrelaxation
-        #             if Method == 3 && itcnt > 0
-        #                 global Tz[1,k] = ω * Tl1 + (1-ω) * Tz[2,k]
-        #             else
-        #                 global Tz[1,k] = Tl1
-        #             end
-        #
-        #         end
-        #
-        #         itcnt += 1
-        #         m += 1
-        #
-        #         # Cora's Method
-        #         #r   = A_in*Tz[1,:]-B
-        #         #err = norm(r)
-        #         #err = sqrt(sum(r_m.^2)/length(r))
-        #
-        #         # Tridiag method
-        #         du = C[3,1:end-1] # Upper diagonal
-        #         dl = C[1,2:end]   # Lower diagonal
-        #         d  = C[2,:]       # Diagonal
-        #
-        #         C_tri = Tridiagonal(dl,d,du)
-        #
-        #         # Calculate residual
-        #         err = norm(C_tri*Tz[1,:] - B)
-        #
-        #         # Push calculated error to residual variable
-        #         push!(r,err)
-        #
-        #         # Save new Tz profile to Tz0
-        #         Tz[2,:] = Tz[1,:] # Note that index 2 is the prev
-        #
-        #         # Save Tz profile to corresponding index on storage
-        #         #Tz_all[m,:] = Tz[1,:]
-        #
-        #         #@printf("Now on iteration %i with residual %.5E \n",m,err)
-        #
-        #         elapsed = time() - allstart
-        #         if mod(m,printint)==0
-        #             @printf("Now on iteration %i with resid %.2E in %fs\n",m,err,elapsed)
-        #             #@printf("\tTz ")
-        #             #print(Tz)
-        #             #@printf("\n\tTz0 ")
-        #             #print(Tz0)
-        #
-        #             #@printf("Now on iteration %i with err %f\n",m,err)
-        #         end
-        #
-        #     end
-        #
-        #
-        #
-        #     # Restrict to iteration
-        #     #r  =  r[1:itcnt]
-        #     #Tz = Tz[1:itcnt,:]
-        #     elapsed = time()-allstart
-        #     @printf("Completed in %i iterations with resid %.2E. Only took %fs\n",itcnt,err,elapsed)
-        #     return Tz, itcnt,r#, Tz_all
-        # end
-        #
+    """
+    # Function to print a sample equation
+    """
 
+    function print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,kmax)
+        @printf("\nOn itr %i level %i of %i we have...",itcnt,k,kmax)
+        @printf("\n\t%.2E = 1/%.2E * ( %.2E -...",x1,A1,b1)
+        @printf("\n\t\t... %.2E * %.2E - %.2E * %.2E ) ",A0,x0,A2,x2)
+        print("\n")
+    end
 
+    """
+    -----------------------------------------------------------
+    FD_itrsolve(A,b,x_init,tol,Method,ω)
+    -----------------------------------------------------------
+        For a steady state, 1-D Diffusion Problem
+        Solves Ax = b using one of the following iterative methods
+        (1) Jacobi (2) Gauss-Siedel (3) Successive Overrelaxation,
+        where A is the sparse matrix of coefficients given by A,
+        x is the temperature profile and B is the source term.
 
+        Begins with an initial guess, x and iterates until the residual
+        (sum of(Ax-B)^2) is below the tolerance level
+
+        Input
+            1) A        - coefficients [3 x n], 1=k-1; 2=k; 3=k+1
+            2) b        - source term
+            3) x_g      - array of initial guesses
+            4) tol      - tolerance level for residual
+            5) Method   - (1) Jacobi, (2) Gauss-Siedel, (3) SOR
+            7) ω        - weights for successive overrelaxation
+            8) printint - interval (iterations) to print text
+        """
+    function FD_itrsolve(A,b,x_init,tol,Method,ω,printint)
+        allstart = time()
+
+        # Preallocate Arrays [1 x # of cells]
+        ncells = length(x_init)
+        x        = zeros(Float64,2,ncells) # Array for current profile (itr=m)
+
+        # Input Initial Guess(2nd row of Tz)
+        x[2,:] = x_init
+
+        # Preallocate for residuals
+        r   = Float64[]#zeros(Float64,max_iter+1)
+
+        # Set up counters and indexing
+        itcnt = 0     # Count of Iterations
+        m     = 0     # Iteration Storage Number
+        err   = tol+1 # initial value, pre error calculation (need to set up for the diff between guess and actual)
+
+        while  err > tol #m <= max_iter #|| err > tol
+            start = time()
+            #@printf("Starting iter %i...",m)
+            #r_m  = zeros(Float64,1,kmax+1)
+            for k = 1:ncells
+
+                # First Cell
+                if k == 1
+                    x0 = 0
+                    x2 = x[2,k+1] # Take T2 from last iteration (or init guess)
+
+                # Last Cell
+            elseif k == ncells
+                    # For Jacobi Method, use previous values (Row 2 of Tz)
+                    if Method == 1
+                        x0 = x[2,k-1]
+
+                    # For GS and SOR, use new value (Row 1 of Tz)
+                    else
+                        x0 = x[1,k-1]
+                    end
+                    x2 = 0
+                # Interior Cells
+                else
+                    # For Jacobi Method, use previous values (row 2 Tz)
+                    if Method == 1
+                        x0 = x[2,k-1]
+                    # For GS and SOR, use new value (row 1 Tz)
+                    else
+                        x0 = x[1,k-1]
+                    end
+                    # Use old T2 value for all cases
+                    x2 = x[2,k+1]
+                end
+
+                # Get Coefficients and Source Term
+                A0 = A[1,k]
+                A1 = A[2,k]
+                A2 = A[3,k]
+                b1 = b[k]
+
+                # Compute Temperature
+                x1 = 1/A1 * (b1 - A2*x2 - A0*x0)
+
+                # Apply weights for sucessive overrelaxation
+                if Method == 3 && itcnt > 0
+                    global x[1,k] = ω * x1 + (1-ω) * x[2,k]
+                else
+                    global x[1,k] = x1
+                end
+
+                if itcnt%250 == 0
+                    print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,ncells)
+                end
+            end
+
+            itcnt += 1
+            m += 1
+
+            # Make sparse tridiagonal matrix for residual calculation
+            A_tri = makeTridiag(A)
+
+            # Calculate residual (can do this more efficiently iteratively)
+            err = norm(A_tri*x[1,:] - b)
+
+            # Push calculated error to residual variable
+            push!(r,err)
+
+            # Save new Tz profile to Tz0
+            x[2,:] = x[1,:] # Note that index 2 is the prev
+
+            elapsed = time() - allstart
+            if mod(m,printint)==0
+                @printf("Now on iteration %i with resid %.2E in %fs\n",m,err,elapsed)
+            end
+
+        end
+
+        elapsed = time()-allstart
+        @printf("Completed in %i iterations with resid %.2E. Only took %fs\n",itcnt,err,elapsed)
+        return x, itcnt,r
+    end
 end
