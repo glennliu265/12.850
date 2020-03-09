@@ -139,8 +139,8 @@ module ocnmod
             # Compute Source Term with BC (Prescribed Flux)
             global B[1]   = S[k] + val_bot / z_f[k]
 
-            # Ck2 remains the same, Ck1 dep. on BCs
-            C[2,1] = κ[k] / (z_f[k] * z_c[k])
+            # Ck2 remains the same, Ck1 dep. on BCs Need negative here!
+            C[2,1] = - κ[k] / (z_f[k] * z_c[k])
         end
 
         # Set C(k,k-1) to 0, and set C(k,k+1) to the usual
@@ -165,8 +165,8 @@ module ocnmod
             # Compute Source Term with BC (Prescribed Flux)
             global B[kmax]   = S[k] - val_top / z_f[k]
 
-            # Calculate C(k,k)
-            C[2,kmax] = κ[k-1] / (z_f[k] * z_c[k-1])# This depends on the type of BC
+            # Calculate C(k,k) (need negative here!)
+            C[2,kmax]        = -κ[k-1] / (z_f[k] * z_c[k-1])# This depends on the type of BC
 
         end
 
@@ -179,7 +179,7 @@ module ocnmod
             B[k] = S[k]
             # Compute Coefficients
             C[1,k] = κ[k-1]     / (z_f[k] * z_c[k-1]  )
-            C[3,k] = κ[k]   / (z_f[k] * z_c[k])
+            C[3,k] = κ[k]       / (z_f[k] * z_c[k])
             C[2,k] = (C[1,k] + C[3,k]) * -1 # Note this might only work in certain cases
         end
 
@@ -624,7 +624,7 @@ module ocnmod
                     global x[1,k] = x1
                 end
 
-                if itcnt%250 == 0
+                if itcnt%100 == 0
                     print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,ncells)
                 end
             end
