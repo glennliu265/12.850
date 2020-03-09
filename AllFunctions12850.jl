@@ -114,9 +114,9 @@ module ocnmod
         z_t,z_b,                         # Dist to top/bot face from midpt
         z_c0,κ0)                         # bottom diffusivity and midpoint dist
 
-        @printf("Applying the following BCs:")
-        @printf("\n\tBottom - Type %i of value %.2E",BC_bot,val_bot)
-        @printf("\n\tTop    - Type %i of value %.2E",BC_top,val_top)
+        #@printf("Applying the following BCs:")
+        #@printf("\n\tBottom - Type %i of value %.2E",BC_bot,val_bot)
+        #@printf("\n\tTop    - Type %i of value %.2E",BC_top,val_top)
         # Preallocate
         C = zeros(Float64,3,kmax)
         B = zeros(Float64,kmax)
@@ -515,7 +515,7 @@ module ocnmod
         A     = -B
 
         k = kprint
-        print_exeq(k,length(fr),b,C,IC,fr,fl,A)
+        #print_exeq(k,length(fr),b,C,IC,fr,fl,A)
 
         elapsed = time() - start
         #@printf("Completed matrix prep in %fs\n",elapsed)
@@ -523,7 +523,12 @@ module ocnmod
     end
 
     """
+    -----------------------------------------------------------
     # Function to print a sample equation
+    -----------------------------------------------------------
+        Prints sample equation for a given k level and every
+        itcnt iteration. Designed to run within the loop for
+        FD_itrsolve.
     """
 
     function print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,kmax)
@@ -624,9 +629,9 @@ module ocnmod
                     global x[1,k] = x1
                 end
 
-                if itcnt%100 == 0
-                    print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,ncells)
-                end
+                # if itcnt%printint == 0
+                #     #print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,ncells)
+                # end
             end
 
             itcnt += 1

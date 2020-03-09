@@ -9,7 +9,7 @@ include("AllFunctions12850.jl")
 # User Edits
 # -------------------------------------------------------
 # Grid Parameters (Convention will be 1 = bottom)
-levels    = collect(1000:-100:0)
+levels    = collect(1000:-1:0)
 mpts      = ocnmod.get_midpoints(levels)
 #lowerlev = collect(1000:-100:300)
 #upperlev = collect(390:-10:0)
@@ -25,7 +25,7 @@ z_c0      = δz                      # Distance to bottom midpoint
 # Source/Sink Options --------------------------
 z_att     =  400   # Attenuation depth for source
 ocn_trns  = 0.43   # Transmitted portion through ocn surface
-S0        =  125   # Constant multiplying source term
+S0        = 125   # Constant multiplying source term
 cp0       = 3850   # J(kg*C)
 rho       = 1025   # kg/m^3
 
@@ -36,7 +36,7 @@ mld       =  300  # Mixed Layer Depth
 κ0        = κ_int
 
 # Iteration Parameters ------------------------------
-tol       = 1e-12
+tol       = 1e-9
 x_g       = collect(5:5/(kmax):10)#ones(kmax)*5
 ω         = 1.9
 max_iter  = 10379
@@ -50,26 +50,26 @@ BC_top    = 2    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 BC_bot    = 1   # Bot BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 
 val_top   = S0/(cp0*rho*mld) # For this case, I use a flux
-val_bot   = ones(Int8,12).*5   # In this case, I just prescribe a temperature at the boundary
+val_bot   = ones(Int8,12).*10   # In this case, I just prescribe a temperature at the boundary
 
-z_t       = 2#δz/2
-z_b       = 200#δz/2
+z_t       = δz/2
+z_b       = δz/2
 
-x_init    = ones(Float64,kmax)*0 # Initial Temperature Profile
+x_init    = ones(Float64,kmax)*5 # Initial Temperature Profile
 
 # Timestepping Options (current model is in seconds)
 # Use mean MLD (200)
 Δt     = 3600*24*30*12#1 * 3600 * 24 * 30     # One Month Resolution
 ts_max = 36#3 * 12   * Δt      # Years of integration
 #mld_cycle   = sin.((pi/6).*[1:12;]).*100 .+ 200
-
 mld_cycle = ones(Int8,12)*200
+
 θ = 0.5
 
 # Vary Forcing
 # Use mean FSNS (110) and max/min of around 20-200
 #I_cycle   = sin.((pi/6).*[1:12;].-(pi/2)).*90 .+ 110
-I_cycle = sin.((pi/6).*[1:12;].-(pi/2)).*S0
+I_cycle = sin.((pi/6).*[1:12;].-(pi/2)).*S0 .+110
 #I_cycle = ones(Int8,12)*S0
 
 # -------------------------------------------------------
@@ -114,10 +114,16 @@ end
 #Preallocate
 Tprof  = zeros(Float64,ts_max+1,kmax)
 Tz_inv = zeros(Float64,ts_max+1,kmax)
+
+#Iteration Information
+itall  = zeros(ts_max)
+
+#Time series for debugging
 b_ts   = zeros(Float64,ts_max,kmax)
 sr_ts =  zeros(Float64,ts_max,kmax)
 sl_ts = zeros(Float64,ts_max,kmax)
 t0_ts = zeros(Float64,ts_max,kmax)
+
 
 Tprof[1,:] = x_init
 Tz_inv[1,:] = x_init
@@ -171,8 +177,11 @@ for i = 1:ts_max
     # Get Solution via inverting matrix
     ~,Tz_inv[i+1,:]       = ocnmod.FD_inv_sol(A,b)
 
-    # Change this later, but currently puts inverted profile as next step
-    Tprof[i+1,:] = Tz_inv[i+1,:]
+    # Get Solution via iteration
+    itsol,itall[i],resid = ocnmod.FD_itrsolve(A,b,x_init,tol,method,ω,1e4)
+    Tprof[i+1,:] = itsol[1,:]
+
+    # Save timeseries for debugging
     b_ts[i,:] = b
     sr_ts[i,:] = Sr_in
     sl_ts[i,:] = Sl_in
@@ -186,9 +195,9 @@ for i = 1:ts_max
     elapsed = loopstart - time()
     if i%4==0
         @printf("Loop %i finished in %fs\n",i,elapsed)
-        @printf("\tTop Temp is %.2E\n",Tz_inv[i,end])
-        @printf("\tFt       is %.2E\n",b[end])
-        @printf("\n")
+        #@printf("\tTop Temp is %.2E\n",Tz_inv[i,end])
+        #@printf("\tFt       is %.2E\n",b[end])
+        #@printf("\n")
     end
 end
 
@@ -197,20 +206,69 @@ end
 
 # Anim Example
 anim = @animate for i ∈ 1:ts_max
+
+    # Get Month
+    m = i%12
+    if m == 0
+        m=12
+    end
     p=plot(Tz_inv[i,:],mpts,
-            title="Temperature Profiles t="*string(i),
+            title="Temperature Profile \nt=" * lpad(string(i),2,"0") * "; Mon=" * lpad(string(m),2,"0"),
             xlabel="Temperature(°C)",
             ylabel="Depth (m)",
             yticks = 0:100:1000,
             yflip=true,
-            xlims=(-20, 20),
+            xlims=(0, 20),
             lw=2.5,
             linestyle=:dot,
             linecolor=:black,
             labels="Solution (Inversion)")
-end
-gif(anim,"TempProfanim_m2.gif",fps=4)
+    p=plot!(Tprof[i,:],mpts,
+            lw = 1,
+            linecolor=:red,
+            labels="Solution (Iteration) x" * string(itall[i]))
+    # p=plot!([1:12;],I_cycle,
+    #         inset= bbox(0,0,1,1, :bottom, :right),
 
+
+end
+gif(anim,"TempProf_forcinginset.gif",fps=4)
+
+
+# i = 6
+#     # Get Month
+#     m = i%12
+#     if m == 0
+#         m=12
+#     end
+#     l = @layout [a b]#; c{0.2h}]
+#     p1=plot(Tz_inv[i,:],mpts,
+#             subplot=1,
+#             title="Temperature Profile \nt=" * lpad(string(i),2,"0") * "; Mon=" * lpad(string(m),2,"0"),
+#             xlabel="Temperature(°C)",
+#             ylabel="Depth (m)",
+#             yticks = 0:100:1000,
+#             yflip=true,
+#             xlims=(0, 20),
+#             lw=2.5,
+#             linestyle=:dot,
+#             linecolor=:black,
+#             labels="Solution (Inversion)")
+#     p1=plot!(Tprof[i,:],mpts,
+#             lw = 1,
+#             linecolor=:red,
+#             labels="Solution (Iteration) x" * string(itall[i]))
+#
+
+    # plot([1:12;],I_cycle,            #inset= bbox(.1,.2,0.25,0.25, :bottom, :right),
+    # title = "Forcing (SWRad)",
+    # xlabel="Month",
+    # ylabel="W/m2")
+    #
+    # scatter!(12,350,
+    # markershape=:hexagon,
+    # markersize=:100)
+    #plot(p1,p2,layout=l)
 
 
 #
