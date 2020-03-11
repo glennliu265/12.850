@@ -27,7 +27,7 @@ z_c0      = δz                      # Distance to bottom midpoint
 # Source/Sink Options --------------------------
 z_att     =  400   # Attenuation depth for source
 ocn_trns  = 0.43   # Transmitted portion through ocn surface
-S0        = 2500   # Constant multiplying source term
+S0        =  250   # Constant multiplying source term
 cp0       = 3850   # J(kg*C)
 rho       = 1025   # kg/m^3
 
@@ -40,18 +40,18 @@ mld       =  300  # Mixed Layer Depth
 # Iteration Parameters ------------------------------
 tol       = 1e-4
 ω         = 1.9
-max_iter  = 10379
 printint  = 1e6
 method    = 3
 
 # Setting Boundary Conditions --------------------------
 # Currently Hard coded to work with 1-D F_diff, Temperature
 # Where F_diff = κ(ΔT/Δz)
-BC_top    = 2    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
+BC_top    = 2   # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 BC_bot    = 1    # Bot BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 
 # Value at top/bottom
-val_top   = S0/(cp0*rho*mld) # For this case, I use a flux
+#val_top   = S0/(cp0*rho*z_att) # For this case, I use a flux
+val_top   = S0/(cp0*rho*z_att)
 val_bot   = 3.5# In this case, I just prescribe a temperature at the boundary
 
 # Simple interpolation, keep this value here
@@ -91,17 +91,16 @@ end
 # plot(κ_seas')
 
 # -------------------------------------------------------
-# Calculate Q_seasonal [month x profile]
+# Calculate Source Term, varying by season [month x profile]
 # -------------------------------------------------------
 Q_seas  = zeros(Float64,12,kmax) # Preallocate
 for imon = 1:12
-        Q_seas[imon,:] = ocnmod.FD_calc_I(mpts,z_f,z_att,I_cycle[imon],ocn_trns,rho,cp0,mld_cycle[imon])
+        Q_seas[imon,:] = ocnmod.FD_calc_I(mpts,z_f,z_att,I_cycle[imon],ocn_trns,rho,cp0)
 end
-#Q_seas  = zeros(Float64,12,kmax) # Preallocate
 
 # Change surface flux to cycle seasonally
 if BC_top == 2
-        val_top        = I_cycle ./ (cp0.*rho.*mld_cycle)
+        val_top  = I_cycle ./ (cp0.*rho.*z_att)
 end
 
 # Dirichlet BCs
@@ -162,11 +161,11 @@ for i = 1:ts_max
         m = 12
     end
 
-    # Get Corresponding Matrices
-    # C_in  = C[m,:,:]
-    # Sr_in = S_new[m,:,:]
-    # Sl_in = S_new[nm,:,:]
-    # B_in  = C[nm,:,:]
+    #Get Corresponding Matrices
+    C_in  = C[m,:,:]
+    Sr_in = S_new[m,:,:]
+    Sl_in = S_new[nm,:,:]
+    B_in  = C[nm,:,:]
 
     # if any(x -> x < 0, Sr_in)
     #         @printf("\tLoop %i has negative in Sr\n",i)
@@ -188,11 +187,6 @@ for i = 1:ts_max
     # Prepare matrices
     kprint = 1
     A,b,t0 = ocnmod.CN_make_matrix(Δt,θ,Tprof[i,:],C_in,B_in,Sr_in,Sl_in,2,kprint,z_f);
-
-    if any(x -> x < 0, b)
-            #@printf("\tLoop %i has negative in b\n",i)
-            #b = b .* -1
-    end
 
 
     # Get Solution via inverting matrix
@@ -299,13 +293,12 @@ anim = @animate for i ∈ 1:ts_max
             linecolor=:green,
             linewidth=2.5
             )
+
     p=plot!([m],seriestype=:vline,
             subplot=3,
             linecolor=:black,
             linewidth=2.5
             )
-    # p=plot!([1:12;],I_cycle,
-    #         inset= bbox(0,0,1,1, :bottom, :right),
 
 end
 gif(anim,"TempProf_forcinginset.gif",fps=5)
@@ -345,28 +338,28 @@ gif(anim,"TempProf_forcinginset.gif",fps=5)
 # end
 # gif(anim,"TempProf_profonly.gif",fps=4)
 # #
-
-# ------------
-# Contour Plot
-# ------------
-# Repeat mld cycle for whole year
-
-mldplot = repeat(mld_cycle.-1000,convert(Int8,ts_max/12),1)
-mldplot = mldplot .*-1
-cplot=contourf([0:36;],reverse(mpts),Tz_inv',
-        title   ="Temperature Contours",
-        ylabel  ="Depth (m)",
-        yticks  =([200:200:800;],["800","600","400","200"]),
-        xlabel  ="Months",
-        fillcolor=:thermal)
-cplot=plot!(mldplot,
-            linecolor=:white,
-            legend=:none,
-            line=:dot,
-            linewidth=2.5)
-
-#clabel(cplot)
-savefig(cplot,"HW2_Contours.svg")
+#
+# # ------------
+# # Contour Plot
+# # ------------
+# # Repeat mld cycle for whole year
+#
+# mldplot = repeat(mld_cycle.-1000,convert(Int8,ts_max/12),1)
+# mldplot = mldplot .*-1
+# cplot=contourf([0:36;],reverse(mpts),Tz_inv',
+#         title   ="Temperature Contours",
+#         ylabel  ="Depth (m)",
+#         yticks  =([200:200:800;],["800","600","400","200"]),
+#         xlabel  ="Months",
+#         fillcolor=:thermal)
+# cplot=plot!(mldplot,
+#             linecolor=:white,
+#             legend=:none,
+#             line=:dot,
+#             linewidth=2.5)
+#
+# #clabel(cplot)
+# savefig(cplot,"HW2_Contours.svg")
 
 # # ------------
 # # Seasonal Plot

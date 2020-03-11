@@ -71,10 +71,10 @@ module ocnmod
         Outputs
             1) S      = Source/Sink Term
         """
-    function FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0,mld)
+    function FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0)
         #Q = (ocn_trns * S0 * exp.(-1 * levels ./ z_att))
         #S = Q ./ (z_f .* cp0 .* rho)'
-        S = (ocn_trns * S0 * exp.(-1 * levels ./ z_att)) ./ (mld .* cp0 .* rho)'
+        S = (ocn_trns * S0 * exp.(-1 * levels ./ z_att)) ./ (z_att .* cp0 .* rho)'
         return S
     end
 
@@ -86,7 +86,7 @@ module ocnmod
         forcing terms B
 
         NOTE: Assumes Forcing term is on the same side of the equation
-        as the diffusion term. 
+        as the diffusion term.
 
         Inputs:
             ||~ Box Geometry and Indices ~||
