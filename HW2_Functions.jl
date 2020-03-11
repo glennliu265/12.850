@@ -27,14 +27,14 @@ z_c0      = δz                      # Distance to bottom midpoint
 # Source/Sink Options --------------------------
 z_att     =  400   # Attenuation depth for source
 ocn_trns  = 0.43   # Transmitted portion through ocn surface
-S0        =  110   # Constant multiplying source term
+S0        = 2500   # Constant multiplying source term
 cp0       = 3850   # J(kg*C)
 rho       = 1025   # kg/m^3
 
 # Eddy Diffusivity Options --------------------------
 mld       =  300  # Mixed Layer Depth
-κ_mld     = 10^-6 # Eddy Diffusivity in mixed-layer
-κ_int     = 10^-6 #Eddy Diffusivity in the interior
+κ_mld     = 10^-1  # Eddy Diffusivity in mixed-layer
+κ_int     = 10^-4  # Eddy Diffusivity in the interior
 κ0        = κ_int
 
 # Iteration Parameters ------------------------------
@@ -46,27 +46,27 @@ method    = 3
 
 # Setting Boundary Conditions --------------------------
 # Currently Hard coded to work with 1-D F_diff, Temperature
-# Where F_diff = -κ(ΔT/Δz)
-BC_top    = 1    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
+# Where F_diff = κ(ΔT/Δz)
+BC_top    = 2    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 BC_bot    = 1    # Bot BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 
 # Value at top/bottom
-val_top   = 10 #S0/(cp0*rho*mld) # For this case, I use a flux
-val_bot   = 2 # In this case, I just prescribe a temperature at the boundary
+val_top   = S0/(cp0*rho*mld) # For this case, I use a flux
+val_bot   = 3.5# In this case, I just prescribe a temperature at the boundary
 
-# Distance to the temperature value
-z_t       = δz/2
-z_b       = δz/2
+# Simple interpolation, keep this value here
+z_t       = 2#δz/2
+z_b       = 2#δz/2
 
 # Initial Conditions
-x_init    = ones(Float64,kmax)*7.5 # Initial Temperature Profile
+x_init    = ones(Float64,kmax)*5 # Initial Temperature Profile
 
 # Timestepping Options (current model is in seconds)
 # Use mean MLD (200)
 Δt        = 3600*24*30 #1 * 3600 * 24 * 30     # One Month Resolution
 ts_max    = 36 #3 * 12   * Δt      # Years of integration
 mld_cycle = sin.((pi/6).*[1:12;]).*100 .+ 200
-mld_cycle = ones(Int8,12)*200
+#mld_cycle = ones(Int8,12)*200
 θ         = 0.5 # 0 for Forward Euler, 0.5 for CN, 1 for BW Euler
 
 
@@ -78,7 +78,7 @@ plotseas = 0 # Set to 1 to plot seasonal cycle of MLD/Qsw
 # Use mean FSNS (110) and max/min of around 20-200
 #I_cycle   = sin.((pi/6).*[1:12;].-(pi/2)).*90 .+ 110
 I_cycle = sin.((pi/6).*[1:12;].-(pi/2)).*S0
-I_cycle = ones(Int8,12)*S0
+#I_cycle = ones(Int8,12)*S0
 
 # -------------------------------------------------------
 # Make κ (seasonal)
@@ -97,7 +97,7 @@ Q_seas  = zeros(Float64,12,kmax) # Preallocate
 for imon = 1:12
         Q_seas[imon,:] = ocnmod.FD_calc_I(mpts,z_f,z_att,I_cycle[imon],ocn_trns,rho,cp0,mld_cycle[imon])
 end
-Q_seas  = zeros(Float64,12,kmax) # Preallocate
+#Q_seas  = zeros(Float64,12,kmax) # Preallocate
 
 # Change surface flux to cycle seasonally
 if BC_top == 2
@@ -149,6 +149,7 @@ t0_ts = zeros(Float64,ts_max,kmax)
 Tprof[1,:] = x_init
 Tz_inv[1,:] = x_init
 
+tot_time = time()
 for i = 1:ts_max
     loopstart = time()
     m = i%12
@@ -162,10 +163,10 @@ for i = 1:ts_max
     end
 
     # Get Corresponding Matrices
-    C_in  = C[m,:,:]
-    Sr_in = S_new[m,:,:]
-    Sl_in = S_new[nm,:,:]
-    B_in  = C[nm,:,:]
+    # C_in  = C[m,:,:]
+    # Sr_in = S_new[m,:,:]
+    # Sl_in = S_new[nm,:,:]
+    # B_in  = C[nm,:,:]
 
     # if any(x -> x < 0, Sr_in)
     #         @printf("\tLoop %i has negative in Sr\n",i)
@@ -186,13 +187,12 @@ for i = 1:ts_max
 
     # Prepare matrices
     kprint = 1
-    A,b,t0 = ocnmod.CN_make_matrix(Δt,θ,Tprof[i,:],C_in,B_in,Sr_in,Sl_in,1,kprint,z_f);
+    A,b,t0 = ocnmod.CN_make_matrix(Δt,θ,Tprof[i,:],C_in,B_in,Sr_in,Sl_in,2,kprint,z_f);
 
     if any(x -> x < 0, b)
             #@printf("\tLoop %i has negative in b\n",i)
             #b = b .* -1
     end
-
 
 
     # Get Solution via inverting matrix
@@ -203,10 +203,10 @@ for i = 1:ts_max
     Tprof[i+1,:] = itsol[1,:]
 
     # Save timeseries for debugging
-    b_ts[i,:] = b
-    sr_ts[i,:] = Sr_in
-    sl_ts[i,:] = Sl_in
-    t0_ts[i,:] = t0
+    # b_ts[i,:] = b
+    # sr_ts[i,:] = Sr_in
+    # sl_ts[i,:] = Sl_in
+    # t0_ts[i,:] = t0
 
     # if any(x -> x < 0, Tz_inv[i+1,:])
     #         @printf("\tLoop %i has negative in Tz_inv\n",i)
@@ -223,11 +223,13 @@ for i = 1:ts_max
         #@printf("\n")
     end
 end
+elapsed = time() - tot_time
+@printf("\nAll Loops finished in %fs\n",elapsed)
 
 
-
-
-# Anim Example
+# ------------
+# Anim Example with forcing panels
+# ------------
 anim = @animate for i ∈ 1:ts_max
     l = @layout[a{0.3w} grid(2,1)]
     # Get Month
@@ -237,7 +239,7 @@ anim = @animate for i ∈ 1:ts_max
     end
 
     # Ival = val_top[m]#I_cycle[m]
-    # Mval = mld_cycle[m]
+    #Mval = convert(Int16,mld_cycle[m])
 
     p=plot(Tprof[i,:],mpts,
             title="Temperature Profile \nt=" * lpad(string(i),2,"0") * "; Mon=" * lpad(string(m),2,"0"),
@@ -245,31 +247,40 @@ anim = @animate for i ∈ 1:ts_max
             ylabel="Depth (m)",
             yticks = 0:100:1000,
             yflip=true,
-            xlims=(0, 20),
+            xlims=(-20, 20),
             lw=2.5,
             linestyle=:dot,
             linecolor=:black,
             labels="Solution (Inversion)",
             layout = l,
             subplot = 1,
-            legend=:none
+            legend=:none,
+            linewidth=2.5
             )
     p=plot!(Tprof[i,:],mpts,
             lw = 1,
             linecolor=:red,
             labels="Solution (Iteration) x" * string(itall[i]),
             layout = l,
-            subplot=1
+            subplot=1,
+            linewidth=2.5
+            )
+    p=hline!([mld_cycle[m]],
+            layout=l,
+            subplot=1,
+            linewidth=1.0,
+            linecolor=:black,
+            line=:dash
             )
     p=plot!([1:12;],val_top,
             subplot=2,
-            label    = "Forcing",
             xlabel   = "Months",
             xticks   = 3:3:12,
             ylabel   = "degC/s",
-            title    = "Forcing (Top)",
+            title    = "Forcing",
             legend   = :none,
-            linecolor= :blue
+            linecolor= :blue,
+            linewidth=2.5
             )
     p=plot!([m],seriestype=:vline,
             subplot  = 2,
@@ -280,13 +291,13 @@ anim = @animate for i ∈ 1:ts_max
     #         subplot=2)
     p=plot!([1:12;],mld_cycle,
             subplot  = 3,
-            label    = "MLD",
             xlabel   = "Months",
             xticks   = 3:3:12,
-            ylabel   = "m",
+            ylabel   = "meters",
             title    = "Mixed Layer Depth",
             legend   = :none,
-            linecolor=:green
+            linecolor=:green,
+            linewidth=2.5
             )
     p=plot!([m],seriestype=:vline,
             subplot=3,
@@ -296,22 +307,67 @@ anim = @animate for i ∈ 1:ts_max
     # p=plot!([1:12;],I_cycle,
     #         inset= bbox(0,0,1,1, :bottom, :right),
 
-
 end
-gif(anim,"TempProf_forcinginset.gif",fps=4)
+gif(anim,"TempProf_forcinginset.gif",fps=5)
+
+#
 #
 # # ------------
-# # Contour Plot
+# # Anim (just profile)
 # # ------------
-# cplot=contourf([0:36;],reverse(mpts),Tz_inv',
-#         title   ="Temperature Contours",
-#         ylabel  ="Depth (m)",
-#         yticks  =([200:200:800;],["800","600","400","200"]),
-#         xlabel  ="Months",
-#         fillcolor=:thermal)
-# #clabel(cplot)
-# savefig(cplot,"HW2_Contours.svg")
+# anim = @animate for i ∈ 1:ts_max
+#     # Get Month
+#     m = i%12
+#     if m == 0
+#         m=12
+#     end
 #
+#     # Ival = val_top[m]#I_cycle[m]
+#     # Mval = mld_cycle[m]
+#
+#     p=plot(Tprof[i,:],mpts,
+#             title="Temperature Profile \nt=" * lpad(string(i),2,"0") * "; Mon=" * lpad(string(m),2,"0"),
+#             xlabel="Temperature(°C)",
+#             ylabel="Depth (m)",
+#             yticks = 0:100:1000,
+#             yflip=true,
+#             xlims=(-20, 20),
+#             lw=2.5,
+#             linestyle=:dot,
+#             linecolor=:black,
+#             labels="Solution (Inversion)",
+#             )
+#     p=plot!(Tprof[i,:],mpts,
+#             lw = 1,
+#             linecolor=:red,
+#             labels="Solution (Iteration) x" * string(itall[i]),
+#             )
+# end
+# gif(anim,"TempProf_profonly.gif",fps=4)
+# #
+
+# ------------
+# Contour Plot
+# ------------
+# Repeat mld cycle for whole year
+
+mldplot = repeat(mld_cycle.-1000,convert(Int8,ts_max/12),1)
+mldplot = mldplot .*-1
+cplot=contourf([0:36;],reverse(mpts),Tz_inv',
+        title   ="Temperature Contours",
+        ylabel  ="Depth (m)",
+        yticks  =([200:200:800;],["800","600","400","200"]),
+        xlabel  ="Months",
+        fillcolor=:thermal)
+cplot=plot!(mldplot,
+            linecolor=:white,
+            legend=:none,
+            line=:dot,
+            linewidth=2.5)
+
+#clabel(cplot)
+savefig(cplot,"HW2_Contours.svg")
+
 # # ------------
 # # Seasonal Plot
 # # ------------

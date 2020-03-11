@@ -84,6 +84,10 @@ module ocnmod
     -----------------------------------------------------------
         Compute both C (Matrix of Coefficients) and corresponding
         forcing terms B
+
+        NOTE: Assumes Forcing term is on the same side of the equation
+        as the diffusion term. 
+
         Inputs:
             ||~ Box Geometry and Indices ~||
             kmax   = maximum iteration size
@@ -128,7 +132,7 @@ module ocnmod
         # Dirichlet Bottom
         if BC_bot == 1
             # Compute Source Term with BC (Prescribed Temp)
-            B[1]   = S[k] - val_bot *
+            B[1]   = S[k] + val_bot *
                      ( (z_b * κ0) / (z_f[k] * z_c0) )
 
             # Ck0 remains the same. Multiplier goes on bottom term
@@ -137,7 +141,7 @@ module ocnmod
         # Newmann Bottom
         elseif BC_bot == 2
             # Compute Source Term with BC (Prescribed Flux)
-            global B[1]   = S[k] + val_bot / z_f[k]
+            B[1]   = S[k] + val_bot / z_f[k]
 
             # Ck2 remains the same, Ck1 dep. on BCs Need negative here!
             C[2,1] = - κ[k] / (z_f[k] * z_c[k])
@@ -154,7 +158,7 @@ module ocnmod
         if BC_top == 1
 
             # Compute Source Term with BC (Prescribed Temp)
-            B[kmax]   = S[k] - val_top * ( (z_t * κ[k]) / (z_f[k] * z_c[k]) )
+            B[kmax]   = S[k] + val_top * ( (z_t * κ[k]) / (z_f[k] * z_c[k]) )
 
             # Calculate C(k,k)
             C[2,kmax] = (( 2 * κ[k]   / z_c[k]  ) +
@@ -163,7 +167,7 @@ module ocnmod
         # Neumann Top
         elseif BC_top == 2
             # Compute Source Term with BC (Prescribed Flux)
-            global B[kmax]   = S[k] - val_top / z_f[k]
+            B[kmax]   = S[k] + val_top / z_f[k]
 
             # Calculate C(k,k) (need negative here!)
             C[2,kmax]        = -κ[k-1] / (z_f[k] * z_c[k-1])# This depends on the type of BC
@@ -490,7 +494,7 @@ module ocnmod
         r_mult =  Δt*(1-θ)
 
         # Meth1: Add Timestep corrections first
-        # Note, negative signs for Bk, Ck already included 
+        # Note, negative signs for Bk, Ck already included
         if meth == 1
             C[2,:] = C[2,:] .+ abs((1/r_mult))
             B[2,:] = B[2,:] .- abs((1/l_mult))

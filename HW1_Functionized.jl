@@ -28,14 +28,14 @@ z_c0      = δz                      # Distance to bottom midpoint
 # Source/Sink Options --------------------------
 z_att     =  400   # Attenuation depth for source
 ocn_trns  = 0.43   # Transmitted portion through ocn surface
-S0        = -125   # Constant multiplying source term
+S0        = 125   # Constant multiplying source term
 cp0       = 3850   # J(kg*C)
 rho       = 1025   # kg/m^3
 
 # Eddy Diffusivity Options --------------------------
 mld       =  300  # Mixed Layer Depth
-κ_mld     = 10^-2 # Eddy Diffusivity in mixed-layer
-κ_int     = 10^-2 #Eddy Diffusivity in the interior
+κ_mld     = 10^-3 # Eddy Diffusivity in mixed-layer
+κ_int     = 10^-3 #Eddy Diffusivity in the interior
 κ0        = κ_int
 
 # Iteration Parameters ------------------------------
@@ -65,6 +65,10 @@ S                  = ocnmod.FD_calc_I(mpts,z_f,z_att,S0,ocn_trns,rho,cp0,mld)
 
 # Calculate Coefficients
 C,B_new,A_in       = ocnmod.FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b,z_c0,κ0)
+
+# Move B to the other side!!
+B_new = -B_new
+
 
 # Get Solution via inverting matrix
 C_new,Tz_inv       = ocnmod.FD_inv_sol(C,B_new)
