@@ -490,9 +490,10 @@ module ocnmod
         r_mult =  Δt*(1-θ)
 
         # Meth1: Add Timestep corrections first
+        # Note, negative signs for Bk, Ck already included 
         if meth == 1
-            C[2,:] = C[2,:] .- abs((1/r_mult))
-            B[2,:] = B[2,:] .+ abs((1/l_mult))
+            C[2,:] = C[2,:] .+ abs((1/r_mult))
+            B[2,:] = B[2,:] .- abs((1/l_mult))
         end
 
         # Multiply variables by time and theta factors
@@ -504,7 +505,7 @@ module ocnmod
         # Meth2: Add single digit post-multiplication
         # To diagonal (Ck,Bk)
         if meth == 2
-            C[2,:] = C[2,:] .- 1
+            C[2,:] = C[2,:] .+ 1
             B[2,:] = B[2,:] .+ 1
         end
 

@@ -27,7 +27,7 @@ z_c0      = δz                      # Distance to bottom midpoint
 # Source/Sink Options --------------------------
 z_att     =  400   # Attenuation depth for source
 ocn_trns  = 0.43   # Transmitted portion through ocn surface
-S0        =  125   # Constant multiplying source term
+S0        =  110   # Constant multiplying source term
 cp0       = 3850   # J(kg*C)
 rho       = 1025   # kg/m^3
 
@@ -47,11 +47,11 @@ method    = 3
 # Setting Boundary Conditions --------------------------
 # Currently Hard coded to work with 1-D F_diff, Temperature
 # Where F_diff = -κ(ΔT/Δz)
-BC_top    = 2    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
+BC_top    = 1    # Top BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 BC_bot    = 1    # Bot BC type (1 = Dirichlet, 2 = Neumann, 3 = Robin)
 
 # Value at top/bottom
-val_top   = 2 #S0/(cp0*rho*mld) # For this case, I use a flux
+val_top   = 10 #S0/(cp0*rho*mld) # For this case, I use a flux
 val_bot   = 2 # In this case, I just prescribe a temperature at the boundary
 
 # Distance to the temperature value
@@ -63,18 +63,22 @@ x_init    = ones(Float64,kmax)*7.5 # Initial Temperature Profile
 
 # Timestepping Options (current model is in seconds)
 # Use mean MLD (200)
-Δt     = 3600*24*30 #1 * 3600 * 24 * 30     # One Month Resolution
-ts_max = 36 #3 * 12   * Δt      # Years of integration
-#mld_cycle = sin.((pi/6).*[1:12;]).*100 .+ 200
+Δt        = 3600*24*30 #1 * 3600 * 24 * 30     # One Month Resolution
+ts_max    = 36 #3 * 12   * Δt      # Years of integration
+mld_cycle = sin.((pi/6).*[1:12;]).*100 .+ 200
 mld_cycle = ones(Int8,12)*200
+θ         = 0.5 # 0 for Forward Euler, 0.5 for CN, 1 for BW Euler
 
-θ = 0.5
+
+
+# Plotting Options
+plotseas = 0 # Set to 1 to plot seasonal cycle of MLD/Qsw
 
 # Vary Forcing
 # Use mean FSNS (110) and max/min of around 20-200
 #I_cycle   = sin.((pi/6).*[1:12;].-(pi/2)).*90 .+ 110
-I_cycle = sin.((pi/6).*[1:12;].-(pi/2)).*S0 .+110
-#I_cycle = ones(Int8,12)*S0
+I_cycle = sin.((pi/6).*[1:12;].-(pi/2)).*S0
+I_cycle = ones(Int8,12)*S0
 
 # -------------------------------------------------------
 # Make κ (seasonal)
@@ -295,17 +299,51 @@ anim = @animate for i ∈ 1:ts_max
 
 end
 gif(anim,"TempProf_forcinginset.gif",fps=4)
+#
+# # ------------
+# # Contour Plot
+# # ------------
+# cplot=contourf([0:36;],reverse(mpts),Tz_inv',
+#         title   ="Temperature Contours",
+#         ylabel  ="Depth (m)",
+#         yticks  =([200:200:800;],["800","600","400","200"]),
+#         xlabel  ="Months",
+#         fillcolor=:thermal)
+# #clabel(cplot)
+# savefig(cplot,"HW2_Contours.svg")
+#
+# # ------------
+# # Seasonal Plot
+# # ------------
+# if plotseas == 1
+#     splot=plot([1:12;],I_cycle,
+#             xlabel   = "Months",
+#             xticks   = 3:3:12,
+#             grid    = false,
+#             ylabel   = "Incoming SWrad (W/m2)",
+#             yguidefontsize =12,
+#             linewidth = 2.5,
+#             linecolor= :blue,
+#             title    = "Seasonal Cycle",
+#             label   = "Q_sw",
+#             )
+#     splot=plot!(twinx(),mld_cycle,
+#             xticks   = 3:3:12,
+#             grid    = false,
+#             label    = "MLD",
+#             ylabel   = "MLD Depth (m)",
+#             linewidth = 2.5,
+#             linecolor=:green,
+#             legend= :inside
+#             )
+#     savefig(splot,"HW2_Seasonal_Cycle.svg")
+# end
+#
 
 
-# Contour Plot
-cplot=contourf([0:36;],reverse(mpts),Tz_inv',
-        title   ="Temperature Contours",
-        ylabel  ="Depth (m)",
-        yticks  =([200:200:800;],["800","600","400","200"]),
-        xlabel  ="Months",
-        fillcolor=:thermal)
-#clabel(cplot)
-savefig(cplot,"HW2_Contours.svg")
+
+
+
 
 # i = 6
 #     # Get Month
@@ -343,32 +381,6 @@ savefig(cplot,"HW2_Contours.svg")
     #plot(p1,p2,layout=l)
 
 
-#
-#
-# i=83456
-# p=plot(Tz_inv[i ,:],levels,
-#         title="Temperature Profiles t="*string(i),
-#         xlabel="Temperature(°C)",
-#         ylabel="Depth (m)",
-#         yticks = 0:100:1000,
-#         yflip=true,
-#         xlims=(-10, 30),
-#         lw=2.5,
-#         linestyle=:dot,
-#         linecolor=:black,
-#         labels="Solution (Inversion)")
-#
-#     # # Iterate to find solution
-#     # Tprof[m,:],itcnt,resid = ocnmod.CN_solver(kmax,A,Sr_in,Sl_in,B_in,
-#     #                                             x_g,x_init,printint,
-#     #                                             Method,ω,θ)
-#
-#                                                 # Calculate T
-#   # Tprof[m,:],itcnt,resid = ocnmod.FD_calc_T(A,b,x_g,tol,method,max_iter,ω,Tz_inv,printint,A_in)
-#   #
-#
-#
-#
 #
 #
 # end
