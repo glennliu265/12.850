@@ -360,7 +360,7 @@ module ocnmod
         #r  =  r[1:itcnt]
         #Tz = Tz[1:itcnt,:]
         elapsed = time()-allstart
-        @printf("Completed in %i iterations with resid %.2E. Only took %fs\n",itcnt,err,elapsed)
+        @printf("Completed in %i iterations with resid %.2E (%fs)\n",itcnt,err,elapsed)
         return Tz, itcnt,r#, Tz_all
     end
 
@@ -479,7 +479,7 @@ module ocnmod
             1) b  = premultiplied "Forcing Term" that combines Inputs(3,4,6,7)
             2) A  = premultiplied B matrix
         """
-    function CN_make_matrix(Δt,θ,IC,C,B,fr,fl,meth,kprint)
+    function CN_make_matrix(Δt,θ,IC,C,B,fr,fl,meth,kprint,z_f)
 
         start = time()
 
@@ -491,8 +491,8 @@ module ocnmod
 
         # Meth1: Add Timestep corrections first
         if meth == 1
-            C[2,:] = C[2,:] .- (1/r_mult)
-            B[2,:] = B[2,:] .+ (1/l_mult)
+            C[2,:] = C[2,:] .- abs((1/r_mult))
+            B[2,:] = B[2,:] .+ abs((1/l_mult))
         end
 
         # Multiply variables by time and theta factors
@@ -504,15 +504,15 @@ module ocnmod
         # Meth2: Add single digit post-multiplication
         # To diagonal (Ck,Bk)
         if meth == 2
-            C[2,:] = C[2,:] .+ 1
+            C[2,:] = C[2,:] .- 1
             B[2,:] = B[2,:] .+ 1
         end
 
         # Now combine terms
         C_tri = makeTridiag(C)
         t0    = C_tri * IC
-        b     = C_tri * IC + fr + fl # Bring Sl from left side
-        A     = -B
+        b     = C_tri * IC + fr - fl # Bring Sl from left side
+        A     = B
 
         k = kprint
         #print_exeq(k,length(fr),b,C,IC,fr,fl,A)
@@ -530,7 +530,6 @@ module ocnmod
         itcnt iteration. Designed to run within the loop for
         FD_itrsolve.
     """
-
     function print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,kmax)
         @printf("\nOn itr %i level %i of %i we have...",itcnt,k,kmax)
         @printf("\n\t%.2E = 1/%.2E * ( %.2E -...",x1,A1,b1)
@@ -629,9 +628,9 @@ module ocnmod
                     global x[1,k] = x1
                 end
 
-                # if itcnt%printint == 0
-                #     #print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,ncells)
-                # end
+                if itcnt%printint == 0 && k in [1,ncells,ceil(ncells/2)]
+                    #print_itrsolv(itcnt,A0,A1,A2,b1,x0,x1,x2,k,ncells)
+                end
             end
 
             itcnt += 1
@@ -651,13 +650,13 @@ module ocnmod
 
             elapsed = time() - allstart
             if mod(m,printint)==0
-                @printf("Now on iteration %i with resid %.2E in %fs\n",m,err,elapsed)
+                #@printf("Now on iteration %i with resid %.2E in %fs\n",m,err,elapsed)
             end
 
         end
 
         elapsed = time()-allstart
-        @printf("Completed in %i iterations with resid %.2E. Only took %fs\n",itcnt,err,elapsed)
+        @printf("Completed in %i iterations with resid %.2E. (%fs)\n",itcnt,err,elapsed)
         return x, itcnt,r
     end
 end

@@ -12,9 +12,11 @@ levels    = collect(1000:-100:0)     #
 #lowerlev = collect(1000:-100:300)
 #upperlev = collect(390:-10:0)
 #levels = vcat(lowerlev,upperlev)
-kmax      = length(levels)         # maximum index of k
-z_f       = ones(Int8,1,kmax)*1   # Height of each cell
-z_c       = ones(Int8,1,kmax+1)*1  # Height of each cell # Distance between cell midpoints
+δz        = levels[2]-levels[1]*-1  # Cell Height (Constant for now)
+kmax      = length(levels)          # maximum index of k
+z_f       = ones(Int8,1,kmax)*δz    # Height of each cell
+z_c       = ones(Int8,1,kmax+1)*δz  # Height of each cell # Distance between cell midpoints
+z_c0      = δz                      # Distance to bottom midpoint
 #z_f =hcat(ones(Int8,1,length(lowerlev)-1)*100,ones(Int8,1,length(upperlev)+1)*10)
 #z_c = hcat(ones(Int8,1,length(lowerlev))*100,ones(Int8,1,length(upperlev))*10)
 
@@ -28,14 +30,15 @@ rho       = 1025   # kg/m^3
 # Eddy Diffusivity Options --------------------------
 mld       =  300  # Mixed Layer Depth
 κ_mld     = 10^-1 # Eddy Diffusivity in mixed-layer
-κ_int     = 10^-4 #Eddy Diffusivity in the interior
+κ_int     = 10^-7 #Eddy Diffusivity in the interior
+κ0        = κ_int
 
 # Iteration Parameters ------------------------------
 tol       = 1e-12
 x_g       = collect(5:5/(kmax-1):10)#ones(kmax)*5
 ω         = 1.9
 max_iter  = 10379
-printint  = 100000
+printint  = 1e6
 method    = 3
 
 # Setting Boundary Conditions --------------------------
@@ -113,9 +116,9 @@ Inputs:
     S  = Initial forcing/sink term (initial)
 
     ||~ Boundary Conditions      ~||
-    BC_top = 1 for Dirichlet, 2 for Neumann
+    BC_top  = 1 for Dirichlet, 2 for Neumann
     val_top = Input value for top
-    BC_bot = 1 for Dirichlet, 2 for Neumann
+    BC_bot  = 1 for Dirichlet, 2 for Neumann
     val_bot = Input value for bot
     z_t     = Height to top cell
     z_b     = Height to bottom cell
@@ -126,10 +129,10 @@ Outputs:
         first and last entries modified for BCs
 """
 function FD_calc_coeff(kmax,z_f,z_c, # Cell geometry/indices
-    κ,S,                         # κ and Source/Sink Terms
+    κ,S,                             # κ and Source/Sink Terms
     BC_top,val_top,                  # Bottom BCs
-    BC_bot,val_bot,                 # Top BCs
-    z_t,z_b)                        # Top and Bottom heights
+    BC_bot,val_bot,                  # Top BCs
+    z_t,z_b)                         # Top and Bottom heights
 
     # Preallocate
     C = zeros(Float64,3,kmax)
@@ -232,6 +235,7 @@ Input
 """
 
 function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
+    allstart = time()
 
     # Preallocate Arrays [1 x # of cells]
     Tz  = zeros(Float64,2,length(x_g)) # Array for current profile (itr=m)
@@ -249,6 +253,7 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
     err   = tol+1 # initial value, pre error calculation (need to set up for the diff between guess and actual)
 
     while  err > tol #m <= max_iter #|| err > tol
+        start = time()
         #@printf("Starting iter %i...",m)
         r_m  = zeros(Float64,1,kmax+1)
         for k = 1:kmax
@@ -351,8 +356,10 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
         #Tz_all[m,:] = Tz[1,:]
 
         #@printf("Now on iteration %i with residual %.5E \n",m,err)
+
+        elapsed = time() - allstart
         if mod(m,printint)==0
-            @printf("Now on iteration %i with resid %f\n",m,err)
+            @printf("Now on iteration %i with resid %.2E in %fs\n",m,err,elapsed)
             #@printf("\tTz ")
             #print(Tz)
             #@printf("\n\tTz0 ")
@@ -368,7 +375,8 @@ function FD_calc_T(C,B,x_g,tol,Method,max_iter,ω,x_inv,printint,A_in)
     # Restrict to iteration
     #r  =  r[1:itcnt]
     #Tz = Tz[1:itcnt,:]
-
+    elapsed = time()-allstart
+    @printf("Completed in %i iterations with resid %.2E. Only took %fs\n",itcnt,err,elapsed)
     return Tz, itcnt,r#, Tz_all
 end
 """
@@ -408,7 +416,7 @@ end
 S                  = FD_calc_I(levels,z_f,z_att,S0,ocn_trns,rho,cp0,mld)
 
 # Calculate Coefficients
-C,B_new,A_in       = FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b)
+C,B_new,A_in       = FD_calc_coeff(kmax,z_f,z_c,κ,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b,z_c0,κ0)
 
 # Get Solution via inverting matrix
 C_new,Tz_inv       = FD_inv_sol(C,B_new)
