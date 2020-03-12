@@ -27,7 +27,7 @@ z_c0      = δz                      # Distance to bottom midpoint
 # Source/Sink Options --------------------------
 z_att     =  400   # Attenuation depth for source
 ocn_trns  = 0.43   # Transmitted portion through ocn surface
-S0        =  250   # Constant multiplying source term
+S0        = 2000   # Constant multiplying source term
 cp0       = 3850   # J(kg*C)
 rho       = 1025   # kg/m^3
 
@@ -241,7 +241,7 @@ anim = @animate for i ∈ 1:ts_max
             ylabel="Depth (m)",
             yticks = 0:100:1000,
             yflip=true,
-            xlims=(-20, 20),
+            xlims=(0, 20),
             lw=2.5,
             linestyle=:dot,
             linecolor=:black,
@@ -303,6 +303,11 @@ anim = @animate for i ∈ 1:ts_max
 end
 gif(anim,"TempProf_forcinginset.gif",fps=5)
 
+# ------------------
+# Forward Euler Test
+# ------------------
+
+
 #
 #
 # # ------------
@@ -338,28 +343,42 @@ gif(anim,"TempProf_forcinginset.gif",fps=5)
 # end
 # gif(anim,"TempProf_profonly.gif",fps=4)
 # #
-#
-# # ------------
-# # Contour Plot
-# # ------------
-# # Repeat mld cycle for whole year
-#
-# mldplot = repeat(mld_cycle.-1000,convert(Int8,ts_max/12),1)
-# mldplot = mldplot .*-1
-# cplot=contourf([0:36;],reverse(mpts),Tz_inv',
-#         title   ="Temperature Contours",
+
+# ------------
+# Contour Plot
+# ------------
+# Repeat mld cycle for whole year
+
+mldplot = repeat(mld_cycle.-1000,convert(Int8,ts_max/12),1)
+mldplot = mldplot .*-1
+cplot=contourf([0:36;],reverse(mpts),Tz_inv',
+        title   ="Temperature Contours",
+        ylabel  ="Depth (m)",
+        yticks  =([200:200:800;],["800","600","400","200"]),
+        xlabel  ="Months",
+        clims   =(2, 8),
+        fillcolor=:thermal)
+cplot=plot!(mldplot,
+            linecolor=:white,
+            legend=:none,
+            line=:dot,
+            linewidth=2.5)
+
+#clabel(cplot)
+savefig(cplot,"HW2_Contours.svg")
+
+
+# --------------------
+# Diff plot, upper 500m
+# --------------------
+# cplotdiff=contourf([0:36;],reverse(mpts),Tprofdiff',
+#         title   ="Temperature Anomaly (MLDvar-noMLD)",
 #         ylabel  ="Depth (m)",
+#         ylims=(500, 1000),
 #         yticks  =([200:200:800;],["800","600","400","200"]),
 #         xlabel  ="Months",
-#         fillcolor=:thermal)
-# cplot=plot!(mldplot,
-#             linecolor=:white,
-#             legend=:none,
-#             line=:dot,
-#             linewidth=2.5)
-#
-# #clabel(cplot)
-# savefig(cplot,"HW2_Contours.svg")
+#         fillcolor=:balance)
+# savefig(cplotdiff,"HW2_MLDnoMLDdiff.svg")
 
 # # ------------
 # # Seasonal Plot
@@ -389,277 +408,92 @@ gif(anim,"TempProf_forcinginset.gif",fps=5)
 # end
 #
 
+#Tprof_FE_dz = zeros(Float64,3,ts_max+1,kmax)
 
 
 
+# ----
+# ForEu Testing deltaT
+# -----
 
-
-# i = 6
-#     # Get Month
-#     m = i%12
-#     if m == 0
-#         m=12
-#     end
-#     l = @layout [a b]#; c{0.2h}]
-#     p1=plot(Tz_inv[i,:],mpts,
-#             subplot=1,
-#             title="Temperature Profile \nt=" * lpad(string(i),2,"0") * "; Mon=" * lpad(string(m),2,"0"),
-#             xlabel="Temperature(°C)",
-#             ylabel="Depth (m)",
-#             yticks = 0:100:1000,
-#             yflip=true,
-#             xlims=(0, 20),
-#             lw=2.5,
-#             linestyle=:dot,
-#             linecolor=:black,
-#             labels="Solution (Inversion)")
-#     p1=plot!(Tprof[i,:],mpts,
-#             lw = 1,
-#             linecolor=:red,
-#             labels="Solution (Iteration) x" * string(itall[i]))
+# # Create array to fill
+# Tprof_FE = zeros(Float64,3,ts_max+1,kmax)
+# # Fill in array after running
+# Tprof_Fe[1,:,:] = Tprof;
+# save("Tprof_FE.jld","data",Tprof_FE)
 #
-
-    # plot([1:12;],I_cycle,            #inset= bbox(.1,.2,0.25,0.25, :bottom, :right),
-    # title = "Forcing (SWRad)",
-    # xlabel="Month",
-    # ylabel="W/m2")
-    #
-    # scatter!(12,350,
-    # markershape=:hexagon,
-    # markersize=:100)
-    #plot(p1,p2,layout=l)
-
-
-#
-#
-# end
-#
-#
-#
-# end
-#
-# #
-# # # Get Solution via inverting matrix
-# # C_new,Tz_inv       = ocnmod.FD_inv_sol(C,B_new)
-#
-# # Calculate T
-# Tz_new,itcnt,resid = ocnmod.FD_calc_T(kmax,C,B_new,x_g,tol,method,max_iter,ω,printint,A_in)
-#
-# # Plotting Comparison between inverted solution and iterated
-# #gr()
-# plot(Tz_inv[end,:],levels,
-#         title="Temperature Profiles",
+# t = 37
+# l = @layout[a b]
+# pe4 = Tprof_FE[1,37,:];
+# pe5 = Tprof_FE[2,37,:];
+# pe6 = Tprof_FE[3,37,:];
+# Feu = plot(pe4,mpts,
+#         title="Temperature Profile (Forward Euler)",
 #         xlabel="Temperature(°C)",
 #         ylabel="Depth (m)",
 #         yticks = 0:100:1000,
 #         yflip=true,
-#         fmt=png,
+#         xlims=(0, 20),
 #         lw=2.5,
-#         linestyle=:dot,
-#         linecolor=:black,
-#         labels="Solution (Inversion)",
-#         legend=:topleft)
-# plot!(Tz_new[1,:],levels,
-#         lw = 1,
-#         linecolor=:red,
-#         labels="Solution (Iteration) x" * string(itcnt))#,
-#savefig(p,"HW1_Solution.svg")
-#         xlabel="Temp",
-#         ylabel="Depth",
+#         labels="t = 5e4",
+#         layout=l,
+#         subplot=1,
+#         )
+# Feu = plot!(pe5,mpts,
+#         labels="t = 5e5",
+#         lw=2.5,
+#         subplot=1)
+# Feu = plot!(pe6,mpts,
+#         yticks = 0:100:1000,
+#         xlabel="Temperature(°C)",
+#         ylabel="Depth (m)",
+#         yflip=true,
+#         xlims=(-5e45, 5e45),
+#         lw=2.5,
+#         labels="t = 5e6",
+#         layout=l,
+#         subplot = 2,
+#         legend=:left,
+#         )
+# savefig(Feu,"HW2_ForwardEuler_deltaT.svg")
+#
+
+
+
+# ----
+# ForEu Testing deltaz
+# -----
+#
+# l = @layout[a b]
+# pe4 = Tprof100[37,:];
+# pe5 = Tprof10[37,:];
+# pe6 = Tprof31[37,:];
+# Feu = plot(pe4,mp100,
+#         title="Temperature Profile (Forward Euler)",
+#         xlabel="Temperature(°C)",
+#         ylabel="Depth (m)",
 #         yticks = 0:100:1000,
 #         yflip=true,
-#         fmt=png)
-
-# p = plot(Tz_new[1:100:1000,:]',levels,
-#         xlabel="Temp",
-#         ylabel="Depth",
+#         xlims=(0, 20),
+#         lw=2.5,
+#         labels="dz = 100m",
+#         layout=l,
+#         subplot=1,
+#         )
+# Fedz = plot!(pe5,mp10,
+#         labels="dz = 10m",
+#         lw=2.5,
+#         subplot=1)
+# Fedz = plot!(pe6,mp31,
 #         yticks = 0:100:1000,
+#         xlabel="Temperature(°C)",
+#         ylabel="Depth (m)",
 #         yflip=true,
-#         fmt=png)
-
-
-# p = plot(Tz_new',levels,
-#         xlabel="Temp",
-#         ylabel="Depth",
-#         yticks = 0:100:1000,
-#         yflip=true,
-#         fmt=png)
-# ## ---------------------------------------
-# ## Convergence test with different methods
-# ## ---------------------------------------
-# storedecay = Any[]
-# storemaxit = Array{Float32}(undef,3)
-# for M = 1:3
-#     _,tot_it,errdecay = FD_calc_T(C,B_new,x_g,tol,M,max_iter,1.5,Tz_inv)
-#     push!(storedecay,errdecay)
-#     storemaxit[M] = tot_it
-#     @printf("%i iterations for method %i\n",tot_it,M)
-# end
-#
-# plot_conv = plot(1:maximum(storemaxit),storedecay[1],
-#     title="Convergence by Iteration Method",
-#     xlabel="Number of Iterations",
-# #    xlims = [0,4e4],
-#     xaxis=:log,
-#     ylabel="Residual",
-#     lw=2.5,
-#     linecolor=:red,
-#     label="Jacobi x" * string(storemaxit[1]))
-# plot_conv = plot!(storedecay[2],
-#     lw=2.5,
-#     linecolor=:blue,
-#     label="Gauss-Seidel x" * string(storemaxit[2]))
-#
-# plot_conv = plot!(storedecay[3],
-#     lw=2.5,
-#     linecolor=:black,
-#     label="SOR (w=1.5) x" * string(storemaxit[3]))
-# savefig(plot_conv,"HW1_Convergence.svg")
-#
-#
-#
-# ## ---------------------------------------
-# ## Convergence test with SOR, varying ω
-# ## ---------------------------------------
-# ωvar = collect(0.1:0.1:1.9)
-# storemaxit = Array{Float32}(undef,length(ωvar))
-# for w = 1:length(ωvar)
-#     wval = ωvar[w]
-#     _,tot_it,_ = FD_calc_T(C,B_new,x_g,tol,3,1000000,wval,Tz_inv)
-#     storemaxit[w] = tot_it
-#     @printf("%i iterations for ω %f\n",tot_it,wval)
-# end
-#
-# plot_w = plot(ωvar,storemaxit,
-#     title="Iterations to Convergence vs Omega",
-#     xlabel="Omega",
-#     ylabel="Iterations to Convergence",
-# #    yaxis=:log,
-#     lw=2.5,
-#     linecolor=:red)
-# savefig(plot_w,"HW1_SOR.svg")
-#
-#
-# ## ---------------------------------------
-# ## Varying κ
-# ## ---------------------------------------
-# K_const  = ones(Float64,1,kmax)*10^-2
-# K_linear = collect(κ_int:((κ_mld-κ_int)/(kmax-1)):κ_mld)
-#
-# Kprofs = [K_const,K_linear]
-#
-# T_byK = Any[]
-# maxit_byK=Array{Float32}(undef,3)
-# for K = 1:2
-#     k_use = Kprofs[K]
-#
-#     #Calculate Coefficients (varing k)
-#     C_vk,B_vk = FD_calc_coeff(kmax,z_f,z_c,k_use,S,BC_top,val_top,BC_bot,val_bot,z_t,z_b)
-#
-#     # Get Solution via inverting matrix
-#     _,Tz_inv_vk = FD_inv_sol(C_vk,B_vk)
-#
-#     # Calculate T
-#     Tz_vk,itcnt,_ = FD_calc_T(C_vk,B_vk,x_g,tol,3,1000000,1.5,Tz_inv_vk)
-#
-#     # Store K
-#
-#     push!(T_byK,Tz_vk[end,:])
-#
-#     # Store iterations
-#     maxit_byK[K] = itcnt
-# end
-#
-# # Assign third K
-# maxit_byK[3] = itcnt
-# push!(T_byK,Tz_new[end,:])
-#
-# plot_K = plot(T_byK[1],levels,
-#     title="Temp Profiles (Varying K)",
-#     xlabel="Temperature(°C)",
-#     ylabel="Depth (m)",
-#     yticks = 0:100:1000,
-#     yflip=true,
-#     lw=2.5,
-#     linecolor=:red,
-#     label="Constant x" * string(maxit_byK[1]),
-#     legend
-#     layout=(1,2))
-# plot_K = plot!(T_byK[2],levels,
-#     lw=2.5,
-#     linecolor=:blue,
-#     label="Linear x" * string(maxit_byK[2]),
-#     layout=(1,2))
-#
-# plot_K = plot!(T_byK[3],levels,
-#     lw=2.5,
-#     linecolor=:black,
-#     label="Step x" * string(maxit_byK[3]),
-#     layout=(1,2))
-#
-# #savefig(plot_byK,"HW1_Kvary.svg")
-#
-#
-# plot_K = plot(K_const',levels,
-#     title="Temp Profiles (Varying K)",
-#     xlabel="Eddy Diffusivity (m2/s)",
-#     ylabel="Depth (m)",
-#     yticks = 0:100:1000,
-#     yflip=true,
-#     lw=2.5,
-#     linecolor=:red,
-#     label="Constant 0.01",
-#     legend=:bottomright,
-#     layout=(1,2))
-# plot_K = plot!(K_linear,levels,
-#     lw=2.5,
-#     linecolor=:blue,
-#     label="Linear 0.01:1",
-#     layout=(1,2))
-#
-# plot_K = plot!(κ[:,1:end-1]',levels,
-#     lw=2.5,
-#     linecolor=:black,
-#     label="Step @ 300 m" * string(maxit_byK[3]),
-#     layout=(1,2))
-# savefig(plot_K,"HW1_K.svg")
-#
-# # Test CN Make Matrix
-# IC = x_init
-# C  = C_in
-# B = B_in
-# fr = Sr_in
-# fl = Sl_in
-# meth = 1
-#
-#
-# # Determine LHS and RHS multipliers
-# # LHS - For timestep (n+1), multiply by θ
-# l_mult = Δt*(θ)
-# # RHS - For timestep (n)  , multiply by 1-θ
-# r_mult =  Δt*(1-θ)
-#
-# # Meth1: Add Timestep corrections first
-# if meth == 1
-# C[2,:] = C[2,:] .+ (1/r_mult)
-# B[2,:] = B[2,:] .- (1/l_mult)
-# end
-#
-# # Multiply variables by time and theta factors
-# B      = B  .* l_mult
-# fl     = fl .* l_mult
-# C      = C  .* r_mult
-# fr     = fr .* r_mult
-#
-# # Meth2: Add single digit post-multiplication
-# if meth == 2
-# C[2,:] = C[2,:] .+ 1
-# B[2,:] = B[2,:] .+ 1
-# end
-#
-# # Now combine terms
-# C_tri = ocnmod.makeTridiag(C)
-# b     = C_tri * IC + fr + fl # Bring Sl from left side
-# A     = B
-#
-# elapsed = time() - start
+#         xlims=(-20, 20),
+#         lw=2.5,
+#         labels="dz = 3.1m",
+#         layout=l,
+#         subplot = 2,
+#         legend=:left,
+#         )
+# savefig(Fedz,"HW2_ForwardEuler_deltaZ.svg")
