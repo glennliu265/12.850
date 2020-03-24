@@ -779,15 +779,27 @@ module ocnmod
 
     """
     FD_itrsolve_2D
+     Cx     = x coefficients (3 x n)
+     Cy     = y coefficients (3 x m)
+     S      = Modified Forcing Term (n x m)
+     ug     = Initial guess at quantity u (n x m)
+     tol    = Error Tolerance
+     ω      = Weight for SOR
+     method = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
+     wper   = Periodic Western Boundary (1 = periodic)
+     eper   = Periodic Eastern Boundary
+     sper   = Periodic Southern Boundary
+     nper   = Periodic Northern Boundary
 
-     ug - guess at distribution of quantity
-     xper - periodic in x
-     yper - periodic in y
+     Out:
+     u_out = Final approximation of quantity[n x m]
+     itcnt = # of iterations to convergence
+     r     = Array of residuals per iteration
 
     """
     function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper)
-        xmax = length(Cx)
-        ymax = length(Cy)
+        xmax = size(Cx,2)
+        ymax = size(Cy,2)
 
         # Preallocate
         u = zeros(Float32,2,xmax,ymax)
@@ -811,10 +823,10 @@ module ocnmod
                     # Get Coefficients (x)
                     B2 = Cx[1,i]
                     B3 = B3y + Cx[2,i]
-                    B4 = Cx[2,i]
+                    B4 = Cx[3,i]
 
                     # Retrieve value from Source Term
-                    f = S(i,j)
+                    f = S[i,j]
 
                     # Set indexing for iteration method (applies for only u1,u2)
                     if method == 1
@@ -825,10 +837,10 @@ module ocnmod
 
                     # First, assume periodic boudaries
                     # Make i indices periodic
-                    i2 = 1
-                    i4 = 1
+                    i2 = i
+                    i4 = i
                     if i == 1
-                        i2 = imax
+                        i2 = xmax
                     end
                     if i == xmax
                         i4 = 1
@@ -841,14 +853,14 @@ module ocnmod
                     end
 
                     if j == 1
-                        j1 = jmax
+                        j1 = ymax
                     end
 
                     # Interior Points, Periodic
-                    u1 = u[midx,i2,j1]
-                    u2 = u[midx,i2,j1]
-                    u4 = u[1   ,i4,j5]
-                    u5 = u[1   ,i4,j5]
+                    u1 = u[midx,i,j1]
+                    u2 = u[midx,i2,j]
+                    u4 = u[1   ,i4,j]
+                    u5 = u[1   ,i,j5]
 
                     # Modifications for nonperiodic cases
                     if wper != 1 && i == 1
@@ -859,11 +871,11 @@ module ocnmod
                         u4 = 0 # All i+1 terms = 0
                     end
 
-                    if sper != 1 && y == 1
+                    if sper != 1 && j == 1
                         u1 = 0 # All j-1 terms = 0
                     end
 
-                    if nper != 1 && y == ymax
+                    if nper != 1 && j == ymax
                         u5 = 0 # All j+1 terms = 0
                     end
 
@@ -877,85 +889,83 @@ module ocnmod
                     end
 
                 end
+            # End loop for the point, i,j
+            end
+
+            ##  Repeat process to compute residual-------------
+            err = zeros(Float64,xmax*ymax)
+            pt = 1
+            for j = 1:ymax
+
+                # Get Coefficients (y)
+                B1  = Cy[1,j]
+                B3y = Cy[2,j]
+                B5  = Cy[3,j]
 
 
+                for i = 1:xmax
+                    # Get Coefficients (x)
+                    B2 = Cx[1,i]
+                    B3 = B3y + Cx[2,i]
+                    B4 = Cx[2,i]
 
-                ##  Repeat process to compute residual-------------
-                err = zeros(Float64,xmax*ymax)
-                pt = 1
-                for j = 1:ymax
+                    # Retrieve value from Source Term
+                    f = S[i,j]
 
-                    # Get Coefficients (y)
-                    B1  = Cy[1,j]
-                    B3y = Cy[2,j]
-                    B5  = Cy[3,j]
-
-
-                    for i = 1:xmax
-
-
-                        # Get Coefficients (x)
-                        B2 = Cx[1,i]
-                        B3 = B3y + Cx[2,i]
-                        B4 = Cx[2,i]
-
-                        # Retrieve value from Source Term
-                        f = S(i,j)
-
-                        # First, assume periodic boudaries
-                        # Make i indices periodic
-                        i2 = 1
-                        i4 = 1
-                        if i == 1
-                            i2 = imax
-                        end
-                        if i == xmax
-                            i4 = 1
-                        end
-                        # Make j indices periodic
-                        j1 = j
-                        j5 = j
-                        if j == ymax
-                            j5 = 1
-                        end
-
-                        if j == 1
-                            j1 = jmax
-                        end
-
-                        # Interior Points, Periodic
-                        u1 = u[2,i2,j1]
-                        u2 = u[2,i2,j1]
-                        u3 = u[2,i,j]
-                        u4 = u[2,i4,j5]
-                        u5 = u[2,i4,j5]
-
-                        # Modifications for nonperiodic cases
-                        if wper != 1 && i == 1
-                            u2 = 0 # All i-1 terms = 0
-                        end
-
-                        if eper != 1 && i == xmax
-                            u4 = 0 # All i+1 terms = 0
-                        end
-
-                        if sper != 1 && y == 1
-                            u1 = 0 # All j-1 terms = 0
-                        end
-
-                        if nper != 1 && y == ymax
-                            u5 = 0 # All j+1 terms = 0
-                        end
-
-                        err[pt] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) - f
-                        pt += 1
+                    # First, assume periodic boudaries
+                    # Make i indices periodic
+                    i2 = i
+                    i4 = i
+                    if i == 1
+                        i2 = xmax
                     end
-                end
+                    if i == xmax
+                        i4 = 1
+                    end
+                    # Make j indices periodic
+                    j1 = j
+                    j5 = j
+                    if j == ymax
+                        j5 = 1
+                    end
 
-                push!(r,norm(err))
-                itcnt += 1
+                    if j == 1
+                        j1 = ymax
+                    end
+                    # Interior Points, Periodic
+                    u1 = u[2,i,j1]
+                    u2 = u[2,i2,j]
+                    u3 = u[2,i,j]
+                    u4 = u[2,i4,j]
+                    u5 = u[2,i,j5]
+
+                    # Modifications for nonperiodic cases
+                    if wper != 1 && i == 1
+                        u2 = 0 # All i-1 terms = 0
+                    end
+
+                    if eper != 1 && i == xmax
+                        u4 = 0 # All i+1 terms = 0
+                    end
+
+                    if sper != 1 && j == 1
+                        u1 = 0 # All j-1 terms = 0
+                    end
+
+                    if nper != 1 && j == ymax
+                        u5 = 0 # All j+1 terms = 0
+                    end
+
+                    err[pt] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) - f
+                    pt += 1
+                end
+            end
+
+            push!(r,norm(err))
+            itcnt += 1
         end
-        return u, itcnt, r
+        u_out = u[2,:,:]
+        return u_out, itcnt, r
 
     end
 

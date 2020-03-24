@@ -51,7 +51,7 @@ printint  = 1e6
 method    = 3
 
 ## Source Term Settings
-ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my]
+ζ = 0#[sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my]
 contourf(mx,my,ζ)
 
 ## Boundary Conditions
@@ -75,6 +75,23 @@ sb_val = [sin(3*(x/Lx*pi)) for x in mx]
 
 ## Run the script
 
+# Set periodic boundary options
+wper =0
+eper =0
+sper =0
+nper =0
+if WBC == 3
+    wper = 1
+end
+if EBC == 3
+    eper = 1
+end
+if NBC == 3
+    nper = 1
+end
+if SBC == 3
+    sper = 1
+end
 
 # Compute Coefficients and modifications to BCs
 Cx,Bx = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
@@ -86,65 +103,19 @@ Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0
 ζ[:,1]    += Bx[1,:] # West BC
 ζ[:,ymax] += Bx[2,:] # East BC
 
-# note that this assumes xmax = ymax (equal sized spacing on x and y)
-A = zeros(Float64,5,xmax)
-A[1,:] = Cy[1,:]            # [  i , j-1]
-A[2,:] = Cx[1,:]            # [i-1 ,   j]
-A[3,:] = Cx[2,:] .+ Cy[2,:] # [  i ,   j]
-A[4,:] = Cx[3,:]            # [i+1 ,   j]
-A[5,:] = Cy[3,:]            # [  i , j+1]
-
-for j = 1:ymax
-
-    # Get Coefficients (y)
-    B1  = Cy[1,j]
-    B3y = Cy[2,j]
-    B5  = Cy[3,j]
-
-    for i = 1:xmax
-
-        # Get Coefficients (x)
-        B2 = Cx[1,i]
-        B3 = B3y + Cx[2,i]
-        B4 = Cx[2,i]
-
-        f = S()
+# # note that this assumes xmax = ymax (equal sized spacing on x and y)
+# A = zeros(Float64,5,xmax)
+# A[1,:] = Cy[1,:]            # [  i , j-1]
+# A[2,:] = Cx[1,:]            # [i-1 ,   j]
+# A[3,:] = Cx[2,:] .+ Cy[2,:] # [  i ,   j]
+# A[4,:] = Cx[3,:]            # [i+1 ,   j]
+# A[5,:] = Cy[3,:]            # [  i , j+1]
 
 
+S=ζ
+ug = ones(Float64,xmax,ymax)
 
+u_out,itcnt,r =ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper)
+contourf(mx,my,u_out)
 
-
-for y = 1:ymax
-
-    for x = 1:xmax
-
-
-
-    end
-
-end
-
-# Modify Forcing Term and combine other terms
-
-
-
-#Cmake-> run for x, then for y,putting same sourcing term in both
-# combine the middle terms
-
-# X conditionals
-if x == 0
-
-elseif x == Lx
-
-else
-
-end
-
-# Y conditionals
-if y == 0
-
-elseif y == Ly
-
-else
-
-end
+contourf(mx[2:end-1],my,u_out[2:end-1,:])
