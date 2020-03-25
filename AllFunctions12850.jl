@@ -733,6 +733,13 @@ module ocnmod
 
             # Ck2 remains the same, Ck1 dep. on BCs Need negative here!
             C[2,1] = - κ[k] / (z_f[k] * z_c[k])
+
+
+        #Periodic Bottom
+        elseif BC_top == 3
+            C[1,k] = κ[kmax]     / (z_f[k] * z_c[kmax]  )
+            C[3,k] = κ[k]       / (z_f[k] * z_c[k])
+            C[2,k] = (C[1,k] + C[3,k]) * -1
         end
 
         # Set C(k,k-1) to 0, and set C(k,k+1) to the usual
@@ -760,6 +767,11 @@ module ocnmod
             # Calculate C(k,k) (need negative here!)
             C[2,kmax] = -κ[k-1] / (z_f[k] * z_c[k-1])# This depends on the type of BC
 
+        #Periodic Top
+        elseif BC_top == 3
+            C[1,k] = κ[k-1]     / (z_f[k] * z_c[k-1]  )
+            C[3,k] = κ[1]       / (z_f[k] * z_c[1])
+            C[2,k] = (C[1,k] + C[3,k]) * -1
         end
 
         # Set C(k,k+1) to 0, and set C(k,k-1) to the usual
@@ -797,18 +809,19 @@ module ocnmod
      r     = Array of residuals per iteration
 
     """
-    function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper)
+    function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter)
         xmax = size(Cx,2)
         ymax = size(Cy,2)
 
         # Preallocate
-        u = zeros(Float32,2,xmax,ymax)
+        u = zeros(Float64,2,xmax,ymax)
         r = Float64[]
 
         # Assign ug to the first entry
         u[1,:,:] = ug
 
         itcnt = 0
+        start = time()
         while itcnt == 0 || r[itcnt] > tol
             # Loop for each column, by row
             for j = 1:ymax
@@ -893,8 +906,7 @@ module ocnmod
             end
 
             ##  Repeat process to compute residual-------------
-            err = zeros(Float64,xmax*ymax)
-            pt = 1
+            err = zeros(Float64,xmax,ymax)
             for j = 1:ymax
 
                 # Get Coefficients (y)
@@ -956,15 +968,29 @@ module ocnmod
                         u5 = 0 # All j+1 terms = 0
                     end
 
-                    err[pt] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) - f
-                    pt += 1
+                    err[i,j] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) + f
                 end
             end
 
+            # Assign this iteration to the last
+            u[1,:,:] = u[2,:,:]
+            u[2,:,:] .*= 0
+
             push!(r,norm(err))
             itcnt += 1
+            if itcnt > maxiter
+                break
+            end
+            if itcnt%10^6 == 0
+                @printf("\nOn Iteration %e",itcnt)
+            end
+
+
         end
-        u_out = u[2,:,:]
+        u_out = u[1,:,:]
+
+        elapsed = time()-start
+        @printf("\nFinished %e iterations in %s",itcnt,elapsed)
         return u_out, itcnt, r
 
     end

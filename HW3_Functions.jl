@@ -20,7 +20,7 @@ ygrid = [0:1:100;]
 
 # Get End value and indices
 xmax        = length(mx)
-ymax       = length(my)
+ymax        = length(my)
 Lx = mx[xmax]
 Ly = my[ymax]
 
@@ -38,8 +38,8 @@ y_c0      = δy
 
 ## Set Diffusivity Parameter -------------------------------
 # Constant-value
-κx        = ones(Float16,1,xmax)
-κy        = ones(Float16,1,ymax)
+κx        = ones(Float64,1,xmax)
+κy        = ones(Float64,1,ymax)
 
 κx0       = κx[1]
 κy0       = κy[1]
@@ -51,7 +51,7 @@ printint  = 1e6
 method    = 3
 
 ## Source Term Settings
-ζ = 0#[sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my]
+ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my] .*0
 contourf(mx,my,ζ)
 
 ## Boundary Conditions
@@ -66,11 +66,11 @@ eb_val = [y/y for y in my]
 
 # North
 NBC    = 1
-nb_val = [sin(3*(x/Lx*pi)) for x in mx]
+nb_val = [x/x for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 # South
 SBC = 1
-sb_val = [sin(3*(x/Lx*pi)) for x in mx]
+sb_val = [x/x for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
 ## Run the script
@@ -104,18 +104,23 @@ Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0
 ζ[:,ymax] += Bx[2,:] # East BC
 
 # # note that this assumes xmax = ymax (equal sized spacing on x and y)
-# A = zeros(Float64,5,xmax)
-# A[1,:] = Cy[1,:]            # [  i , j-1]
-# A[2,:] = Cx[1,:]            # [i-1 ,   j]
-# A[3,:] = Cx[2,:] .+ Cy[2,:] # [  i ,   j]
-# A[4,:] = Cx[3,:]            # [i+1 ,   j]
-# A[5,:] = Cy[3,:]            # [  i , j+1]
+A = zeros(Float64,5,xmax)
+A[1,:] = Cy[1,:]            # [  i , j-1]
+A[2,:] = Cx[1,:]            # [i-1 ,   j]
+A[3,:] = Cx[2,:] .+ Cy[2,:] # [  i ,   j]
+A[4,:] = Cx[3,:]            # [i+1 ,   j]
+A[5,:] = Cy[3,:]            # [  i , j+1]
 
 
 S=ζ
 ug = ones(Float64,xmax,ymax)
 
-u_out,itcnt,r =ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper)
+u_out,itcnt,r = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,100)
 contourf(mx,my,u_out)
 
+# Plot Outside (Since BCs are wonky)
 contourf(mx[2:end-1],my,u_out[2:end-1,:])
+contourf(mx[2:end-1],my,u_out[2:end-1,:],
+        xlims=(1, 5),
+        ylims=(1, 5),
+        )
