@@ -45,13 +45,13 @@ y_c0      = δy
 κy0       = κy[1]
 
 ## Iteration Parameters ------------------------------
-tol       = 1e-4
+tol       = 1e-10
 ω         = 1.9
 printint  = 1e6
 method    = 3
 
 ## Source Term Settings
-ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my] .*0
+ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my] #.*0
 contourf(mx,my,ζ)
 
 ## Boundary Conditions
@@ -65,11 +65,11 @@ EBC = 3
 eb_val = [y/y for y in my]
 
 # North
-NBC    = 1
+NBC    = 3
 nb_val = [x/x for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 # South
-SBC = 1
+SBC    = 3
 sb_val = [x/x for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
@@ -115,7 +115,7 @@ A[5,:] = Cy[3,:]            # [  i , j+1]
 S=ζ
 ug = ones(Float64,xmax,ymax)
 
-u_out,itcnt,r = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,100)
+u_out,itcnt,r = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,10^4)
 contourf(mx,my,u_out)
 
 # Plot Outside (Since BCs are wonky)
@@ -124,3 +124,15 @@ contourf(mx[2:end-1],my,u_out[2:end-1,:],
         xlims=(1, 5),
         ylims=(1, 5),
         )
+
+
+
+# For Small Grids
+# Currently it seems that z must by (y,x)
+heatmap(mx,my,u_out)
+heatmap(mx[2:end-1],my,u_out[:,2:end-1])
+
+heatmap(ygr,xgr,ugr)
+xgr= mx[2:end-1]
+ygr= my
+ugr = u_out[2:end-1,:]
