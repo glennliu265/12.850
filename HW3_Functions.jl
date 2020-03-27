@@ -57,20 +57,20 @@ contourf(mx,my,ζ)
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
 # West
-WBC = 3
-wb_val = [y/y for y in mx]
+WBC = 1
+wb_val = [y/y*0 for y in my]#[y/y for y in mx]
 
 # East
-EBC = 3
-eb_val = [y/y for y in my]
+EBC = 1
+eb_val = [y/y*0 for y in my]#[y/y for y in my]
 
 # North
-NBC    = 3
-nb_val = [x/x for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
+NBC    = 1
+nb_val = [x/x*0 for x in mx] #[sin(3*(x/Lx*pi)) for x in mx]
 
 # South
-SBC    = 3
-sb_val = [x/x for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
+SBC    = 1
+sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
 ## Run the script
@@ -86,10 +86,10 @@ end
 if EBC == 3
     eper = 1
 end
-if NBC == 3
+if NBC == 1
     nper = 1
 end
-if SBC == 3
+if SBC == 1
     sper = 1
 end
 
@@ -103,27 +103,27 @@ Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0
 ζ[:,1]    += Bx[1,:] # West BC
 ζ[:,ymax] += Bx[2,:] # East BC
 
-# # note that this assumes xmax = ymax (equal sized spacing on x and y)
-A = zeros(Float64,5,xmax)
-A[1,:] = Cy[1,:]            # [  i , j-1]
-A[2,:] = Cx[1,:]            # [i-1 ,   j]
-A[3,:] = Cx[2,:] .+ Cy[2,:] # [  i ,   j]
-A[4,:] = Cx[3,:]            # [i+1 ,   j]
-A[5,:] = Cy[3,:]            # [  i , j+1]
+# # # note that this assumes xmax = ymax (equal sized spacing on x and y)
+# A = zeros(Float64,5,xmax)
+# A[1,:] = Cy[1,:]            # [  i , j-1]
+# A[2,:] = Cx[1,:]            # [i-1 ,   j]
+# A[3,:] = Cx[2,:] .+ Cy[2,:] # [  i ,   j]
+# A[4,:] = Cx[3,:]            # [i+1 ,   j]
+# A[5,:] = Cy[3,:]            # [  i , j+1]
 
 
 S=ζ
 ug = ones(Float64,xmax,ymax)
 
 u_out,itcnt,r = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,10^4)
-contourf(mx,my,u_out)
+contour(my,mx,u_out)
 
-# Plot Outside (Since BCs are wonky)
-contourf(mx[2:end-1],my,u_out[2:end-1,:])
-contourf(mx[2:end-1],my,u_out[2:end-1,:],
-        xlims=(1, 5),
-        ylims=(1, 5),
-        )
+# # Plot Outside (Since BCs are wonky)
+# contourf(mx[2:end-1],my,u_out[2:end-1,:])
+# contourf(mx[2:end-1],my,u_out[2:end-1,:],
+#         xlims=(1, 5),
+#         ylims=(1, 5),
+#         )
 
 
 
@@ -132,7 +132,8 @@ contourf(mx[2:end-1],my,u_out[2:end-1,:],
 heatmap(mx,my,u_out)
 heatmap(mx[2:end-1],my,u_out[:,2:end-1])
 
-heatmap(ygr,xgr,ugr)
+
 xgr= mx[2:end-1]
 ygr= my
 ugr = u_out[2:end-1,:]
+heatmap(ygr,xgr,ugr)

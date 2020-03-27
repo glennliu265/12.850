@@ -990,7 +990,7 @@ module ocnmod
         u_out = u[1,:,:]
 
         elapsed = time()-start
-        @printf("\nFinished %e iterations in %s",itcnt,elapsed)
+        @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
         return u_out, itcnt, r
 
     end
