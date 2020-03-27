@@ -809,13 +809,17 @@ module ocnmod
      r     = Array of residuals per iteration
 
     """
-    function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter)
+    function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter,saveiter)
         xmax = size(Cx,2)
         ymax = size(Cy,2)
 
         # Preallocate
         u = zeros(Float64,2,xmax,ymax)
         r = Float64[]
+
+        # Scrap (Delete Later: Save first 10 iterations)
+        u_scrap = zeros(Float64,saveiter,xmax,ymax)
+        err_scrap = zeros(Float64,saveiter,xmax,ymax)
 
         # Assign ug to the first entry
         u[1,:,:] = ug
@@ -850,8 +854,8 @@ module ocnmod
 
                     # First, assume periodic boudaries
                     # Make i indices periodic
-                    i2 = i
-                    i4 = i
+                    i2 = i-1
+                    i4 = i+1
                     if i == 1
                         i2 = xmax
                     end
@@ -859,8 +863,8 @@ module ocnmod
                         i4 = 1
                     end
                     # Make j indices periodic
-                    j1 = j
-                    j5 = j
+                    j1 = j-1
+                    j5 = j+1
                     if j == ymax
                         j5 = 1
                     end
@@ -893,7 +897,7 @@ module ocnmod
                     end
 
                     # Now calculate the central point
-                    u3 = -1*(f+B1*u1+B2*u2+B4*u4+B5*u5)/B3
+                    u3 = (f-B1*u1-B2*u2-B4*u4-B5*u5)/B3
 
                     if method == 3
                         u[2,i,j] = ω * u3 + (1-ω) * u[1,i,j]
@@ -907,6 +911,7 @@ module ocnmod
 
             ##  Repeat process to compute residual-------------
             err = zeros(Float64,xmax,ymax)
+
             for j = 1:ymax
 
                 # Get Coefficients (y)
@@ -926,8 +931,8 @@ module ocnmod
 
                     # First, assume periodic boudaries
                     # Make i indices periodic
-                    i2 = i
-                    i4 = i
+                    i2 = i-1
+                    i4 = i+1
                     if i == 1
                         i2 = xmax
                     end
@@ -935,8 +940,8 @@ module ocnmod
                         i4 = 1
                     end
                     # Make j indices periodic
-                    j1 = j
-                    j5 = j
+                    j1 = j-1
+                    j5 = j+1
                     if j == ymax
                         j5 = 1
                     end
@@ -968,21 +973,28 @@ module ocnmod
                         u5 = 0 # All j+1 terms = 0
                     end
 
-                    err[i,j] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) + f
+                    err[i,j] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) - f
                 end
             end
 
             # Assign this iteration to the last
             u[1,:,:] = u[2,:,:]
-            u[2,:,:] .*= 0
+            #u[2,:,:] .*= 0
 
             push!(r,norm(err))
             itcnt += 1
             if itcnt > maxiter
                 break
             end
-            if itcnt%10^6 == 0
-                @printf("\nOn Iteration %e",itcnt)
+
+            if itcnt%10^5 == 0
+                @printf("\nOn Iteration %i",itcnt)
+            end
+
+            # Scrap: Save first 10 iterations and error
+            if itcnt <=saveiter
+                u_scrap[itcnt,:,:]=u[1,:,:]
+                err_scrap[itcnt,:,:]=err
             end
 
 
@@ -991,7 +1003,7 @@ module ocnmod
 
         elapsed = time()-start
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
-        return u_out, itcnt, r
+        return u_out, itcnt, r, u_scrap, err_scrap
 
     end
 
