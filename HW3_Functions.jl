@@ -7,12 +7,12 @@ include("AllFunctions12850.jl")
 
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
-xgrid = [0:1:100;]
-ygrid = [0:1:100;]
+xgrid = [0:.1:2;]
+ygrid = [0:.1:1;]
 
 # Get Midpoints
- mx      = ocnmod.get_midpoints(xgrid)
- my      = ocnmod.get_midpoints(ygrid)
+mx      = ocnmod.get_midpoints(xgrid)
+my      = ocnmod.get_midpoints(ygrid)
 
 # Get Cell Width
 δx        = (xgrid[2]-xgrid[1])
@@ -21,8 +21,8 @@ ygrid = [0:1:100;]
 # Get End value and indices
 xmax        = length(mx)
 ymax        = length(my)
-Lx = mx[xmax]
-Ly = my[ymax]
+Lx          = mx[xmax]
+Ly          = my[ymax]
 
 
 # Get Cell Spacing and Widths (Currently Fixed)
@@ -48,28 +48,33 @@ y_c0      = δy
 tol       = 1e-10
 ω         = 1.9
 printint  = 1e6
-method    = 3
+method    = 1
+save_iter = 100
+max_iter  = 1e5
 
 ## Source Term Settings
-ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my] #.*0
-contourf(mx,my,ζ)
-
+ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my]# .*0
+#ones(Float64,xmax,ymax).*5#
+# contourf(mx,my,ζ')
+# heatmap(mx,my,ζ')
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
 # West
+# 1 = Dirichlet, 2 = Neumann, 3 = Periodic
+
 WBC = 1
 wb_val = [y/y*0 for y in my]#[y/y for y in mx]
 
 # East
-EBC = 1
+EBC =  1
 eb_val = [y/y*0 for y in my]#[y/y for y in my]
 
 # North
-NBC    = 1
+NBC = 1
 nb_val = [x/x*0 for x in mx] #[sin(3*(x/Lx*pi)) for x in mx]
 
 # South
-SBC    = 1
+SBC = 1
 sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
@@ -86,10 +91,10 @@ end
 if EBC == 3
     eper = 1
 end
-if NBC == 1
+if NBC == 3
     nper = 1
 end
-if SBC == 1
+if SBC == 3
     sper = 1
 end
 
@@ -98,10 +103,10 @@ Cx,Bx = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0
 Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
 
 # Modify Boundary Conditions
-ζ[1,:]    += By[1,:] # South BC
-ζ[xmax,:] += By[2,:] # North BC
-ζ[:,1]    += Bx[1,:] # West BC
-ζ[:,ymax] += Bx[2,:] # East BC
+ζ[1,:]    -= Bx[1,:] # South BC
+ζ[xmax,:] -= Bx[2,:] # North BC
+ζ[:,1]    -= By[1,:] # West BC
+ζ[:,ymax] -= By[2,:] # East BC
 
 # # # note that this assumes xmax = ymax (equal sized spacing on x and y)
 # A = zeros(Float64,5,xmax)
@@ -115,9 +120,32 @@ Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0
 S=ζ
 ug = ones(Float64,xmax,ymax)
 
-u_out,itcnt,r = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,10^4)
-contour(my,mx,u_out)
+u_out,itcnt,r,u_scrap,err_scrap,unew = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
 
+contourf(mx,my,u_out',
+        clabels=true,
+        levels=20
+        )
+heatmap(mx,my,u_out')
+# Animate Convergence
+anim = @animate for i ∈ 1:save_iter
+        c = contourf(mx,my,u_scrap[i,:,:]',
+                title="Streamfunction: Iteration "*string(i),
+                clabels=true,
+                levels=20
+                )
+end
+gif(anim,"HW3_Convergence.gif",fps=10)
+
+# Animate Convergence
+anim2 = @animate for i ∈ 1:save_iter
+        c = contourf(mx,my,err_scrap[i,:,:]',
+                title="Error: Iteration "*string(i),
+#                clabels=true,
+                levels=20
+                )
+end
+gif(anim2,"HW3_Err.gif",fps=10)
 # # Plot Outside (Since BCs are wonky)
 # contourf(mx[2:end-1],my,u_out[2:end-1,:])
 # contourf(mx[2:end-1],my,u_out[2:end-1,:],
@@ -125,15 +153,13 @@ contour(my,mx,u_out)
 #         ylims=(1, 5),
 #         )
 
-
-
 # For Small Grids
 # Currently it seems that z must by (y,x)
-heatmap(mx,my,u_out)
-heatmap(mx[2:end-1],my,u_out[:,2:end-1])
-
-
-xgr= mx[2:end-1]
-ygr= my
-ugr = u_out[2:end-1,:]
-heatmap(ygr,xgr,ugr)
+# heatmap(mx,my,u_out)
+# heatmap(mx[2:end-1],my,u_out[:,2:end-1])
+#
+#
+# xgr= mx[2:end-1]
+# ygr= my
+# ugr = u_out[2:end-1,:]
+# heatmap(ygr,xgr,ugr)

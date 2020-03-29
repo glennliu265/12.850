@@ -714,9 +714,11 @@ module ocnmod
         C = zeros(Float64,3,kmax)
         B = zeros(Float64,2,length(val_top)) # 1st dim, 1=bot,2=top,
 
-
         # Options for bottom boundary ------------------------------------
         k = 1
+
+        # Set the k+1 cell (same for all cases)
+        C[3,1] = κ[k]   / (z_f[k] * z_c[k])
 
         # Dirichlet Bottom
         if BC_bot == 1
@@ -724,30 +726,33 @@ module ocnmod
             B[1,:]   = val_bot .* (2 * κ0) / (z_f[k] * z_c0)
 
             # Ck0 remains the same. Multiplier goes on bottom term
+            C[1,1] = 0
             C[2,1] = (( 2 * κ0   / z_c0    ) +
                       (     κ[k] / z_c[k]  )) * -1/z_f[k] # Prescribed Temp
+
         # Newmann Bottom
         elseif BC_bot == 2
             # Compute Source Term with BC (Prescribed Flux)
             B[1,:]   = val_bot ./ z_f[k]
 
             # Ck2 remains the same, Ck1 dep. on BCs Need negative here!
+            C[1,1] = 0
             C[2,1] = - κ[k] / (z_f[k] * z_c[k])
 
-
-        #Periodic Bottom
-        elseif BC_top == 3
-            C[1,k] = κ[kmax]     / (z_f[k] * z_c[kmax]  )
-            C[3,k] = κ[k]       / (z_f[k] * z_c[k])
-            C[2,k] = (C[1,k] + C[3,k]) * -1
+            #Periodic Bottom
+        elseif BC_bot == 3
+            C[1,1] = κ[kmax] / (z_f[k] * z_c[kmax])
+            C[2,1] = (C[1,k] + C[3,k]) * -1
         end
 
         # Set C(k,k-1) to 0, and set C(k,k+1) to the usual
-        C[1,1] = 0
-        C[3,1] = κ[k]   / (z_f[k] * z_c[k])
+
 
         # Options for top boundary ----------------------------------------
         k = kmax
+
+        # Set k-1 cells (same for all conditions)
+        C[1,kmax] = κ[k-1]     / (z_f[k] * z_c[k-1])
 
         # Dirichlet Top
         if BC_top == 1
@@ -758,36 +763,49 @@ module ocnmod
             # Calculate C(k,k)
             C[2,kmax] = (( 2 * κ[k]   / z_c[k]  ) +
                          (     κ[k-1] / z_c[k-1])) * -1/z_f[k] # Prescribed Temp
+            C[3,kmax] = 0
 
         # Neumann Top
         elseif BC_top == 2
+
             # Compute Source Term with BC (Prescribed Flux)
             B[2,:]   = val_top ./ z_f[k]
 
             # Calculate C(k,k) (need negative here!)
             C[2,kmax] = -κ[k-1] / (z_f[k] * z_c[k-1])# This depends on the type of BC
+            C[3,kmax] = 0
 
         #Periodic Top
         elseif BC_top == 3
-            C[1,k] = κ[k-1]     / (z_f[k] * z_c[k-1]  )
-            C[3,k] = κ[1]       / (z_f[k] * z_c[1])
-            C[2,k] = (C[1,k] + C[3,k]) * -1
+
+            C[2,kmax] = (C[1,k] + C[3,k]) * -1
+            C[3,kmax] = κ[1]       / (z_f[k] * z_c[1])
+
         end
 
         # Set C(k,k+1) to 0, and set C(k,k-1) to the usual
-        C[1,kmax] = κ[k-1]     / (z_f[k] * z_c[k-1])
-        C[3,kmax] = 0
+
 
         # Options for interior ----------------------------------------------------
         for k = 2:kmax-1
             # Compute Coefficients
-            C[1,k] = κ[k-1]     / (z_f[k] * z_c[k-1]  )
-            C[3,k] = κ[k]       / (z_f[k] * z_c[k])
+            C[1,k] = κ[k-1]     / (z_f[k] * z_c[k-1])
+            C[3,k] = κ[k]       / (z_f[k] * z_c[k]  )
             C[2,k] = (C[1,k] + C[3,k]) * -1 # Note this might only work in certain cases
         end
 
         return C,B
     end
+    """
+    FD_idx2d
+
+    # Sets up periodic indexing
+
+    """
+    function FD_idx2d(i,j,imax,jmax,nper,sper,eper,wper)
+
+    end
+
 
     """
     FD_itrsolve_2D
@@ -800,7 +818,7 @@ module ocnmod
      method = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
      wper   = Periodic Western Boundary (1 = periodic)
      eper   = Periodic Eastern Boundary
-     sper   = Periodic Southern Boundary
+     sper   =  Periodic Southern Boundary
      nper   = Periodic Northern Boundary
 
      Out:
@@ -818,11 +836,13 @@ module ocnmod
         r = Float64[]
 
         # Scrap (Delete Later: Save first 10 iterations)
-        u_scrap = zeros(Float64,saveiter,xmax,ymax)
+        u_scrap   = zeros(Float64,saveiter,xmax,ymax)
         err_scrap = zeros(Float64,saveiter,xmax,ymax)
 
         # Assign ug to the first entry
-        u[1,:,:] = ug
+        u[1,:,:] = ug # 1 will store the previous guess
+        u[2,:,:] = ug # 2 will store the updated guess
+        unew     = zeros(Float64,xmax,ymax)
 
         itcnt = 0
         start = time()
@@ -832,14 +852,14 @@ module ocnmod
 
                 # Get Coefficients (y)
                 B1  = Cy[1,j]
-                B3y = Cy[2,j]
+                #B3y = Cy[2,j]
                 B5  = Cy[3,j]
 
                 for i = 1:xmax
 
                     # Get Coefficients (x)
                     B2 = Cx[1,i]
-                    B3 = B3y + Cx[2,i]
+                    B3 = Cy[2,j] + Cx[2,i]
                     B4 = Cx[3,i]
 
                     # Retrieve value from Source Term
@@ -854,28 +874,32 @@ module ocnmod
 
                     # First, assume periodic boudaries
                     # Make i indices periodic
-                    i2 = i-1
-                    i4 = i+1
                     if i == 1
                         i2 = xmax
+                    else
+                        i2 = i-1
                     end
                     if i == xmax
                         i4 = 1
-                    end
-                    # Make j indices periodic
-                    j1 = j-1
-                    j5 = j+1
-                    if j == ymax
-                        j5 = 1
+                    else
+                        i4 = i+1
                     end
 
+                    # Make j indices periodic
+                    if j == ymax
+                        j5 = 1
+                    else
+                        j5 = j+1
+                    end
                     if j == 1
                         j1 = ymax
+                    else
+                        j1 = j-1
                     end
 
                     # Interior Points, Periodic
-                    u1 = u[midx,i,j1]
-                    u2 = u[midx,i2,j]
+                    u1 = u[midx,i,j1] # Take j-1 depending on method
+                    u2 = u[midx,i2,j] # Take i-1 depending on method
                     u4 = u[1   ,i4,j]
                     u5 = u[1   ,i,j5]
 
@@ -897,7 +921,8 @@ module ocnmod
                     end
 
                     # Now calculate the central point
-                    u3 = (f-B1*u1-B2*u2-B4*u4-B5*u5)/B3
+                    u3 = (f - B1*u1 - B2*u2 - B4*u4 - B5*u5) * (1/B3)
+                    unew[i,j] = u3
 
                     if method == 3
                         u[2,i,j] = ω * u3 + (1-ω) * u[1,i,j]
@@ -916,15 +941,13 @@ module ocnmod
 
                 # Get Coefficients (y)
                 B1  = Cy[1,j]
-                B3y = Cy[2,j]
                 B5  = Cy[3,j]
-
 
                 for i = 1:xmax
                     # Get Coefficients (x)
                     B2 = Cx[1,i]
-                    B3 = B3y + Cx[2,i]
-                    B4 = Cx[2,i]
+                    B3 = Cy[2,j] + Cx[2,i]
+                    B4 = Cx[3,i]
 
                     # Retrieve value from Source Term
                     f = S[i,j]
@@ -939,16 +962,17 @@ module ocnmod
                     if i == xmax
                         i4 = 1
                     end
+
                     # Make j indices periodic
                     j1 = j-1
                     j5 = j+1
+                    if j == 1
+                        j1 = ymax
+                    end
                     if j == ymax
                         j5 = 1
                     end
 
-                    if j == 1
-                        j1 = ymax
-                    end
                     # Interior Points, Periodic
                     u1 = u[2,i,j1]
                     u2 = u[2,i2,j]
@@ -979,7 +1003,7 @@ module ocnmod
 
             # Assign this iteration to the last
             u[1,:,:] = u[2,:,:]
-            #u[2,:,:] .*= 0
+            u[2,:,:] .*= 0
 
             push!(r,norm(err))
             itcnt += 1
@@ -988,7 +1012,8 @@ module ocnmod
             end
 
             if itcnt%10^5 == 0
-                @printf("\nOn Iteration %i",itcnt)
+                elapsed = time()-start
+                @printf("\nOn Iteration %i in %s s",itcnt,elapsed)
             end
 
             # Scrap: Save first 10 iterations and error
@@ -1003,7 +1028,7 @@ module ocnmod
 
         elapsed = time()-start
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
-        return u_out, itcnt, r, u_scrap, err_scrap
+        return u_out, itcnt, r, u_scrap, err_scrap,unew
 
     end
 
