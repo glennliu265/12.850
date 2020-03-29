@@ -778,8 +778,9 @@ module ocnmod
         #Periodic Top
         elseif BC_top == 3
 
-            C[2,kmax] = (C[1,k] + C[3,k]) * -1
+
             C[3,kmax] = κ[1]       / (z_f[k] * z_c[1])
+            C[2,kmax] = (C[1,k] + C[3,k]) * -1
 
         end
 
