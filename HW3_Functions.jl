@@ -7,8 +7,10 @@ include("AllFunctions12850.jl")
 
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
-xgrid = [0:.1:2;]
-ygrid = [0:.1:1;]
+xgrid = [0:1:50;]
+ygrid = [0:1:150;]
+# xgrid = [0:.1:2;]
+# ygrid = [0:.1:1;]
 
 # Get Midpoints
 mx      = ocnmod.get_midpoints(xgrid)
@@ -45,18 +47,20 @@ y_c0      = δy
 κy0       = κy[1]
 
 ## Iteration Parameters ------------------------------
-tol       = 1e-10
-ω         = 1.9
+tol       = 1e-6
+ω         = 1.6
 printint  = 1e6
 method    = 1
 save_iter = 100
 max_iter  = 1e5
 
 ## Source Term Settings
-ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my]# .*0
-#ones(Float64,xmax,ymax).*5#
-# contourf(mx,my,ζ')
-# heatmap(mx,my,ζ')
+ζ = [sin(x/Lx*pi)^2 + cos(y/Ly*pi)^2 for x in mx, y in my] #.*0
+#ζ[25,75] = 5
+#ζ[40,150] = -500
+#ones(Float64,xmax,ymax).*10#
+contourf(mx,my,ζ')
+ #heatmap(mx,my,ζ')
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
 # West
@@ -66,15 +70,15 @@ WBC = 1
 wb_val = [y/y*0 for y in my]#[y/y for y in mx]
 
 # East
-EBC =  1
+EBC = 1
 eb_val = [y/y*0 for y in my]#[y/y for y in my]
 
 # North
-NBC = 1
+NBC = 3
 nb_val = [x/x*0 for x in mx] #[sin(3*(x/Lx*pi)) for x in mx]
 
 # South
-SBC = 1
+SBC = 3
 sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
@@ -120,32 +124,97 @@ Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0
 S=ζ
 ug = ones(Float64,xmax,ymax)
 
-u_out,itcnt,r,u_scrap,err_scrap,unew = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
 
-contourf(mx,my,u_out',
+u_out,itcnt,r,u_scrap,err_scrap = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
+
+fig6= contourf(mx,my,u_out',
         clabels=true,
-        levels=20
+        title="Psi (No Flow E/W Periodic N/S), It#"*string(itcnt),
+        xlabel="x (meters)",
+        ylabel="y (meters)",
+        levels=10,
+        fillcolor=:inferno
         )
-heatmap(mx,my,u_out')
+savefig(fig6,"HW3_PointVortex.svg")
+
+
+## Heatmap (Vorticity) + Streamfunction Overlay
+f4 = plot(
+        contourf(mx,my,ζ',
+                title="Vorticity",
+                fillcolor=:blues,
+                clabels=true,
+#                xlabel="x (meters)",
+#                ylabel="y (meters)",
+                levels=10,
+                clims=(-2,2),
+                ),
+        contourf(mx,my,u_out',
+                clabels=true,
+                seriescolor=:black,
+                title="Psi (No Flow N/S/E/W ), It#"*string(itcnt),
+#                xlabel="x (meters)",
+#                ylabel="y (meters)",
+                levels=10,
+                fillcolor=:inferno,
+                )
+        )
+savefig(f4,"HW3_QuadSin2.svg")
+
+
+# Fig 4 (ζ=10, No flow E/W)
+fig4= contourf(mx,my,u_out',
+        clabels=true,
+        title="Psi (No Flow N/S Periodic E/W; Vorticity=10), It#"*string(itcnt),
+        xlabel="x (meters)",
+        ylabel="y (meters)",
+        levels=10,
+        fillcolor=:inferno
+        )
+savefig(fig3,"HW3_NoFlowNS_PerEW_ConstVort.svg")
+
+
+
+
+
 # Animate Convergence
 anim = @animate for i ∈ 1:save_iter
         c = contourf(mx,my,u_scrap[i,:,:]',
                 title="Streamfunction: Iteration "*string(i),
                 clabels=true,
-                levels=20
+                levels=20,
+                fillcolor=:balance
                 )
 end
 gif(anim,"HW3_Convergence.gif",fps=10)
 
 # Animate Convergence
 anim2 = @animate for i ∈ 1:save_iter
-        c = contourf(mx,my,err_scrap[i,:,:]',
+        c = heatmap(mx,my,abs.(err_scrap[i,:,:]'),
                 title="Error: Iteration "*string(i),
-#                clabels=true,
-                levels=20
+                clims=(0, 1)
                 )
 end
 gif(anim2,"HW3_Err.gif",fps=10)
+
+
+
+anim3 = @animate for i ∈ 1:save_iter
+        l = @layout[a b]
+        c = contourf(mx,my,u_scrap[i,:,:]',
+                title="Streamfunction: Iteration "*string(i),
+                clabels=true,
+                levels=20,
+                fillcolor=:balance,
+                )
+        h = heatmap(mx,my,abs.(err_scrap[i,:,:]'),
+                title="Error: Iteration "*string(i),
+                )
+        plot(c,h,layout = l)
+
+end
+gif(anim3,"HW3_Together_sinusoidal_vert.gif",fps=10)
+
 # # Plot Outside (Since BCs are wonky)
 # contourf(mx[2:end-1],my,u_out[2:end-1,:])
 # contourf(mx[2:end-1],my,u_out[2:end-1,:],
@@ -163,3 +232,82 @@ gif(anim2,"HW3_Err.gif",fps=10)
 # ygr= my
 # ugr = u_out[2:end-1,:]
 # heatmap(ygr,xgr,ugr)
+
+
+## Fig 1 (ζ=10, No flow)
+# fig1 = contourf(mx,my,u_out',
+#         clabels=true,
+#         title="Psi (No Flow N/S/E/W; Vorticity=10), It#"*string(itcnt),
+#         xlabel="x (meters)",
+#         ylabel="y (meters)",
+#         levels=10,
+#         fillcolor=:inferno
+#         )
+# savefig(fig1,"HW3_NoFlow_ConstVort.svg")
+
+
+## Fig 2 (ζ=10, No flow N/S Periodic E/W)
+# fig2= contourf(mx,my,u_out',
+#         clabels=true,
+#         title="Psi (No Flow N/S Periodic E/W; Vorticity=10), It#"*string(itcnt),
+#         xlabel="x (meters)",
+#         ylabel="y (meters)",
+#         levels=10,
+#         fillcolor=:inferno
+#         )
+# savefig(fig2,"HW3_NoFlowNS_PerEW_ConstVort.svg")
+
+## Periodic Convergence Test
+# pct = plot(r2,
+#     label = "N/S Periodic",
+#     title = "Iterations to Convergence for Different BCs",
+#     xlabel="Iterations to Convergence",
+#     ylabel="Residual"
+#     )
+# pct = plot!(r3,
+#     label = "E/W Periodic"
+#     )
+# savefig(pct, "PeriodicConvergence.svg")
+
+## Convergence Test
+# par = [0.5:.1:1.9;]
+# itall = zeros(Float64,length(par))
+# for i = 1:length(par)
+#         ω = par[i]
+#         method = 3
+#         ~,itall[i],~,~, = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,1e5,save_iter)
+# end
+#
+# ct = plot(par,itall,
+#     title="SOR Convergence Test",
+#     xlabel="Omega",
+#     xlim = (0.5,2),
+#     ylabel="Iterations to Convergence",
+#     labels="Iterations",
+#     legend=:topleft,
+#     linewidth=2.5
+#     )
+# savefig(ct,"HW3_SORConvergence.svg")
+
+## Fig4: Sinusoidal Vorticity, No Flow N/S/E/W
+# f4 = plot(
+#         contourf(mx,my,ζ',
+#                 title="Vorticity",
+#                 fillcolor=:blues,
+#                 clabels=true,
+# #                xlabel="x (meters)",
+# #                ylabel="y (meters)",
+#                 levels=10,
+#                 clims=(0.25,2),
+#                 ),
+#         contourf(mx,my,u_out',
+#                 clabels=true,
+#                 seriescolor=:black,
+#                 title="Psi (No Flow N/S/E/W ), It#"*string(itcnt),
+# #                xlabel="x (meters)",
+# #                ylabel="y (meters)",
+#                 levels=10,
+#                 fillcolor=:inferno,
+#                 )
+#         )
+# savefig(f4,"HW3_sinVort_NoFlowNSEW.svg")
