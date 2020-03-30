@@ -843,7 +843,6 @@ module ocnmod
         # Assign ug to the first entry
         u[1,:,:] = ug # 1 will store the previous guess
         u[2,:,:] = ug # 2 will store the updated guess
-        unew     = zeros(Float64,xmax,ymax)
 
         itcnt = 0
         start = time()
@@ -923,7 +922,6 @@ module ocnmod
 
                     # Now calculate the central point
                     u3 = (f - B1*u1 - B2*u2 - B4*u4 - B5*u5) * (1/B3)
-                    unew[i,j] = u3
 
                     if method == 3
                         u[2,i,j] = ω * u3 + (1-ω) * u[1,i,j]
@@ -1029,7 +1027,7 @@ module ocnmod
 
         elapsed = time()-start
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
-        return u_out, itcnt, r, u_scrap, err_scrap,unew
+        return u_out, itcnt, r, u_scrap, err_scrap
 
     end
 
