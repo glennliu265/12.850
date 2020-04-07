@@ -839,6 +839,7 @@ module ocnmod
         # Scrap (Delete Later: Save first 10 iterations)
         u_scrap   = zeros(Float64,saveiter,xmax,ymax)
         err_scrap = zeros(Float64,saveiter,xmax,ymax)
+        err_map = zeros(Float64,xmax, ymax)
 
         # Assign ug to the first entry
         u[1,:,:] = ug # 1 will store the previous guess
@@ -1002,11 +1003,13 @@ module ocnmod
 
             # Assign this iteration to the last
             u[1,:,:] = u[2,:,:]
-            u[2,:,:] .*= 0
 
             push!(r,norm(err))
             itcnt += 1
+
+            # Save error map and break on last iteration
             if itcnt > maxiter
+                err_map = err;
                 break
             end
 
@@ -1022,12 +1025,15 @@ module ocnmod
             end
 
 
+
+
+
         end
         u_out = u[1,:,:]
 
         elapsed = time()-start
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
-        return u_out, itcnt, r, u_scrap, err_scrap
+        return u_out, itcnt, r, u_scrap, err_scrap, err_map
 
     end
 
