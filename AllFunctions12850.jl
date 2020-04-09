@@ -797,40 +797,43 @@ module ocnmod
 
         return C,B
     end
-    """
-    FD_idx2d
-
-    # Sets up periodic indexing
-
-    """
-    function FD_idx2d(i,j,imax,jmax,nper,sper,eper,wper)
-
-    end
-
 
     """
     FD_itrsolve_2D
-     Cx     = x coefficients (3 x n)
-     Cy     = y coefficients (3 x m)
-     S      = Modified Forcing Term (n x m)
-     ug     = Initial guess at quantity u (n x m)
-     tol    = Error Tolerance
-     ω      = Weight for SOR
-     method = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
-     wper   = Periodic Western Boundary (1 = periodic)
-     eper   = Periodic Eastern Boundary
-     sper   =  Periodic Southern Boundary
-     nper   = Periodic Northern Boundary
+    # Iterative Solver for 2D finite-difference problems
+
+
+    # Inputs:
+         Cx       = x coefficients (3 x n)
+         Cy       = y coefficients (3 x m)
+         S        = Modified Forcing Term (n x m)
+         ug       = Initial guess at quantity u (n x m)
+         tol      = Error Tolerance
+         ω        = Weight for SOR
+         method   = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
+         wper     = Periodic Western Boundary (1 = periodic, 0 = not)
+         eper     = Periodic Eastern Boundary
+         nper     = Periodic Northern Boundary
+         maxiter  = Maximum amount of iterations permitted
+         saveiter = Amount of iterations to save
 
      Out:
-     u_out = Final approximation of quantity[n x m]
-     itcnt = # of iterations to convergence
-     r     = Array of residuals per iteration
+         u_out   = Final approximation of quantity[n x m]
+         itcnt   = # of iterations to convergence
+         r       = Array of residuals per iteration
+         err_map = Map of the error for the final timestep
 
     """
     function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter,saveiter)
         xmax = size(Cx,2)
         ymax = size(Cy,2)
+
+        # Assign per to individual matrix
+        chk_per = zeros(Int,4)
+        chk_per[1] = nper
+        chk_per[2] = sper
+        chk_per[3] = eper
+        chk_per[4] = wper
 
         # Preallocate
         u = zeros(Float64,2,xmax,ymax)
@@ -921,9 +924,10 @@ module ocnmod
                         u5 = 0 # All j+1 terms = 0
                     end
 
-                    # Now calculate the central point
+                    # Now calculate the central point [i,j]
                     u3 = (f - B1*u1 - B2*u2 - B4*u4 - B5*u5) * (1/B3)
 
+                    # Apply weights for SOR
                     if method == 3
                         u[2,i,j] = ω * u3 + (1-ω) * u[1,i,j]
                     else
@@ -934,72 +938,8 @@ module ocnmod
             # End loop for the point, i,j
             end
 
-            ##  Repeat process to compute residual-------------
-            err = zeros(Float64,xmax,ymax)
-
-            for j = 1:ymax
-
-                # Get Coefficients (y)
-                B1  = Cy[1,j]
-                B5  = Cy[3,j]
-
-                for i = 1:xmax
-                    # Get Coefficients (x)
-                    B2 = Cx[1,i]
-                    B3 = Cy[2,j] + Cx[2,i]
-                    B4 = Cx[3,i]
-
-                    # Retrieve value from Source Term
-                    f = S[i,j]
-
-                    # First, assume periodic boudaries
-                    # Make i indices periodic
-                    i2 = i-1
-                    i4 = i+1
-                    if i == 1
-                        i2 = xmax
-                    end
-                    if i == xmax
-                        i4 = 1
-                    end
-
-                    # Make j indices periodic
-                    j1 = j-1
-                    j5 = j+1
-                    if j == 1
-                        j1 = ymax
-                    end
-                    if j == ymax
-                        j5 = 1
-                    end
-
-                    # Interior Points, Periodic
-                    u1 = u[2,i,j1]
-                    u2 = u[2,i2,j]
-                    u3 = u[2,i,j]
-                    u4 = u[2,i4,j]
-                    u5 = u[2,i,j5]
-
-                    # Modifications for nonperiodic cases
-                    if wper != 1 && i == 1
-                        u2 = 0 # All i-1 terms = 0
-                    end
-
-                    if eper != 1 && i == xmax
-                        u4 = 0 # All i+1 terms = 0
-                    end
-
-                    if sper != 1 && j == 1
-                        u1 = 0 # All j-1 terms = 0
-                    end
-
-                    if nper != 1 && j == ymax
-                        u5 = 0 # All j+1 terms = 0
-                    end
-
-                    err[i,j] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) - f
-                end
-            end
+            # Calculate residual
+            err = calc_res_2d(Cx,Cy,S,u[2,:,:],chk_per)
 
             # Assign this iteration to the last
             u[1,:,:] = u[2,:,:]
@@ -1013,20 +953,17 @@ module ocnmod
                 break
             end
 
+            # Currently set to print on every 10,000th iteration
             if itcnt%10^5 == 0
                 elapsed = time()-start
                 @printf("\nOn Iteration %i in %s s",itcnt,elapsed)
             end
 
-            # Scrap: Save first 10 iterations and error
+            # Scrap: Save first "saveiter" iterations and error for animation
             if itcnt <=saveiter
                 u_scrap[itcnt,:,:]=u[1,:,:]
                 err_scrap[itcnt,:,:]=err
             end
-
-
-
-
 
         end
         u_out = u[1,:,:]
@@ -1039,5 +976,250 @@ module ocnmod
 
 
 
+    """
+    2D_calc_residual(Cx,Cy,S,x,chk_per)
+    Calculate the residual (r = b - Ax), where:
+        x       = some initial guess [i x j]
+        b       = Source term (S [i x j]_
+        A       = Matrix of coefficients in x and y directions (Cx [5 x i], Cy [5 x j])
+        chk_per = boolean (N-per,S-per,E-per,W-per)
+
+    Inputs:
+        1) Cx      = Coefficients in x-direction [5 x i]
+        2) Cy      = Coefficients in y-direction [5 x j]
+        3) S       = Source term                 [i x j]
+        4) x       = Guess                       [i x j]
+        5) chk_per = Boolean for periodic BC     [4 (N,S,E,W)], 1 = period, 0 = not
+
+    Output:
+        1) res     = residual r = b - Ax [i x j]
+
+    """
+
+    function calc_res_2d(Cx,Cy,S,x,chk_per)
+        xmax = size(Cx,2)
+        ymax = size(Cy,2)
+
+        nper = chk_per[1]
+        sper = chk_per[2]
+        eper = chk_per[3]
+        wper = chk_per[4]
+
+        res = zeros(Float64,xmax,ymax)
+
+        for j = 1:ymax
+
+            # Get Coefficients (y)
+            B1  = Cy[1,j]
+            B5  = Cy[3,j]
+
+            for i = 1:xmax
+                # Get Coefficients (x)
+                B2 = Cx[1,i]
+                B3 = Cy[2,j] + Cx[2,i]
+                B4 = Cx[3,i]
+
+                # Retrieve value from Source Term
+                f = S[i,j]
+
+                # First, assume periodic boudaries
+                # Make i indices periodic
+                i2 = i-1
+                i4 = i+1
+                if i == 1
+                    i2 = xmax
+                end
+                if i == xmax
+                    i4 = 1
+                end
+
+                # Make j indices periodic
+                j1 = j-1
+                j5 = j+1
+                if j == 1
+                    j1 = ymax
+                end
+                if j == ymax
+                    j5 = 1
+                end
+
+                # Interior Points, Periodic
+                u1 = x[i,j1]
+                u2 = x[i2,j]
+                u3 = x[i,j]
+                u4 = x[i4,j]
+                u5 = x[i,j5]
+
+                # Modifications for nonperiodic cases
+                if wper != 1 && i == 1
+                    u2 = 0 # All i-1 terms = 0
+                end
+
+                if eper != 1 && i == xmax
+                    u4 = 0 # All i+1 terms = 0
+                end
+
+                if sper != 1 && j == 1
+                    u1 = 0 # All j-1 terms = 0
+                end
+
+                if nper != 1 && j == ymax
+                    u5 = 0 # All j+1 terms = 0
+                end
+
+                res[i,j] = f - (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5)
+            end
+        end
+        return res
+    end
+    #
+    #
+    #
+    #         """
+    #         2d_cg
+    #         # Solve Ax=b using conjugent gradient method (Krylov)
+    #
+    #
+    #         # Inputs:
+    #              Cx       = x coefficients (3 x n)
+    #              Cy       = y coefficients (3 x m)
+    #              S        = Modified Forcing Term (n x m)
+    #              ug       = Initial guess at quantity u (n x m)
+    #              tol      = Error Tolerance
+    #              ω        = Weight for SOR
+    #              method   = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
+    #              wper     = Periodic Western Boundary (1 = periodic, 0 = not)
+    #              eper     = Periodic Eastern Boundary
+    #              nper     = Periodic Northern Boundary
+    #              maxiter  = Maximum amount of iterations permitted
+    #              saveiter = Amount of iterations to save
+    #
+    #          Out:
+    #              u_out   = Final approximation of quantity[n x m]
+    #              itcnt   = # of iterations to convergence
+    #              r       = Array of residuals per iteration
+    #              err_map = Map of the error for the final timestep
+    #
+    #         """
+    #         function 2d_cg(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter,saveiter)
+    #
+    #             xmax = size(Cx,2)
+    #             ymax = size(Cy,2)
+    #
+    #             # Preallocate
+    #             u = zeros(Float64,2,xmax,ymax)
+    #             r = Float64[]
+    #
+    #             # Scrap (Delete Later: Save first 10 iterations)
+    #             u_scrap   = zeros(Float64,saveiter,xmax,ymax)
+    #             err_scrap = zeros(Float64,saveiter,xmax,ymax)
+    #             err_map = zeros(Float64,xmax, ymax)
+    #
+    #             # Assign ug to the first entry
+    #             u[1,:,:] = ug # 1 will store the previous guess
+    #             u[2,:,:] = ug # 2 will store the updated guess
+    #
+    #             itcnt = 0
+    #             while residual < tol || itcnt == 0
+    #
+    #                 ##  Compute first residual
+    #                 res = zeros(Float64,xmax,ymax)
+    #
+    #                 for j = 1:ymax
+    #
+    #                     # Get Coefficients (y)
+    #                     B1  = Cy[1,j]
+    #                     B5  = Cy[3,j]
+    #
+    #                     for i = 1:xmax
+    #                         # Get Coefficients (x)
+    #                         B2 = Cx[1,i]
+    #                         B3 = Cy[2,j] + Cx[2,i]
+    #                         B4 = Cx[3,i]
+    #
+    #                         # Retrieve value from Source Term
+    #                         f = S[i,j]
+    #
+    #                         # First, assume periodic boudaries
+    #                         # Make i indices periodic
+    #                         i2 = i-1
+    #                         i4 = i+1
+    #                         if i == 1
+    #                             i2 = xmax
+    #                         end
+    #                         if i == xmax
+    #                             i4 = 1
+    #                         end
+    #
+    #                         # Make j indices periodic
+    #                         j1 = j-1
+    #                         j5 = j+1
+    #                         if j == 1
+    #                             j1 = ymax
+    #                         end
+    #                         if j == ymax
+    #                             j5 = 1
+    #                         end
+    #
+    #                         # Interior Points, Periodic
+    #                         u1 = u[2,i,j1]
+    #                         u2 = u[2,i2,j]
+    #                         u3 = u[2,i,j]
+    #                         u4 = u[2,i4,j]
+    #                         u5 = u[2,i,j5]
+    #
+    #                         # Modifications for nonperiodic cases
+    #                         if wper != 1 && i == 1
+    #                             u2 = 0 # All i-1 terms = 0
+    #                         end
+    #
+    #                         if eper != 1 && i == xmax
+    #                             u4 = 0 # All i+1 terms = 0
+    #                         end
+    #
+    #                         if sper != 1 && j == 1
+    #                             u1 = 0 # All j-1 terms = 0
+    #                         end
+    #
+    #                         if nper != 1 && j == ymax
+    #                             u5 = 0 # All j+1 terms = 0
+    #                         end
+    #
+    #                         res[i,j] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) - f
+    #                     end
+    #                 end
+    #
+    #
+    #                 push!(r,norm(err))
+    #                 itcnt += 1
+    #
+    #                 # Save error map and break on last iteration
+    #                 if itcnt > maxiter
+    #                     err_map = err;
+    #                     break
+    #                 end
+    #
+    #                 # Currently set to print on every 10,000th iteration
+    #                 if itcnt%10^5 == 0
+    #                     elapsed = time()-start
+    #                     @printf("\nOn Iteration %i in %s s",itcnt,elapsed)
+    #                 end
+    #
+    #                 # Scrap: Save first "saveiter" iterations and error for animation
+    #                 if itcnt <=saveiter
+    #                     u_scrap[itcnt,:,:]=u[1,:,:]
+    #                     err_scrap[itcnt,:,:]=err
+    #                 end
+    #
+    #             end
+    #             u_out = u[1,:,:]
+    #
+    #             elapsed = time()-start
+    #             @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
+    #             return u_out, itcnt, r, u_scrap, err_scrap, err_map
+    #
+    #         end
+
+    #end
 # Module End
 end
