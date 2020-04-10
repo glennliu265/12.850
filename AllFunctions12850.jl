@@ -937,14 +937,19 @@ module ocnmod
                 end
             # End loop for the point, i,j
             end
+(
+            # Multiply A (mat. of coeffs) by x (guess)
+            Sg = Ax_2D(Cx,Cy,u[2,:,:],chk_per)
 
             # Calculate residual
-            err = calc_res_2d(Cx,Cy,S,u[2,:,:],chk_per)
+            err = S - Sg
+            #err = calc_res_2d(Cx,Cy,S,u[2,:,:],chk_per)
 
             # Assign this iteration to the last
             u[1,:,:] = u[2,:,:]
 
             push!(r,norm(err))
+
             itcnt += 1
 
             # Save error map and break on last iteration
@@ -1072,6 +1077,114 @@ module ocnmod
         end
         return res
     end
+
+"""
+    # Ax_2D(Cx,Cy,x,chk_per)
+    # Function to compute Ax = b iteratively where
+        x       = some initial guess [i x j]
+        A       = Matrix of coefficients in x and y directions (Cx [5 x i], Cy [5 x j])
+        chk_per = boolean (N-per,S-per,E-per,W-per)
+
+    Inputs:
+        1) Cx      = Coefficients in x-direction [5 x i]
+        2) Cy      = Coefficients in y-direction [5 x j]
+        4) x       = Guess                       [i x j]
+        5) chk_per = Boolean for periodic BC     [4 (N,S,E,W)], 1 = period, 0 = not
+"""
+    function Ax_2D(Cx,Cy,x,chk_per)
+        xmax = size(Cx,2)
+        ymax = size(Cy,2)
+
+        nper = chk_per[1]
+        sper = chk_per[2]
+        eper = chk_per[3]
+        wper = chk_per[4]
+
+        b = zeros(Float64,xmax,ymax)
+
+        for j = 1:ymax
+
+            # Get Coefficients (y)
+            B1  = Cy[1,j]
+            B5  = Cy[3,j]
+
+            for i = 1:xmax
+                # Get Coefficients (x)
+                B2 = Cx[1,i]
+                B3 = Cy[2,j] + Cx[2,i]
+                B4 = Cx[3,i]
+
+                # First, assume periodic boudaries
+                # Make i indices periodic
+                i2 = i-1
+                i4 = i+1
+                if i == 1
+                    i2 = xmax
+                end
+                if i == xmax
+                    i4 = 1
+                end
+
+                # Make j indices periodic
+                j1 = j-1
+                j5 = j+1
+                if j == 1
+                    j1 = ymax
+                end
+                if j == ymax
+                    j5 = 1
+                end
+
+                # Interior Points, Periodic
+                u1 = x[i,j1]
+                u2 = x[i2,j]
+                u3 = x[i,j]
+                u4 = x[i4,j]
+                u5 = x[i,j5]
+
+                # Modifications for nonperiodic cases
+                if wper != 1 && i == 1
+                    u2 = 0 # All i-1 terms = 0
+                end
+
+                if eper != 1 && i == xmax
+                    u4 = 0 # All i+1 terms = 0
+                end
+
+                if sper != 1 && j == 1
+                    u1 = 0 # All j-1 terms = 0
+                end
+
+                if nper != 1 && j == ymax
+                    u5 = 0 # All j+1 terms = 0
+                end
+
+                b[i,j] = B1*u1+B2*u2+B3*u3+B4*u4+B5*u5
+            end
+        end
+        return b
+    end
+
+
+#
+# """
+# """
+#     function cj(Cx,Cy,S,chk_per)
+#
+#     # 1. Compute the direction (residual, b-Ax)
+#     d = calc_res_2d(Cx,Cy,S,x,chk_per)
+#
+#
+#
+#     # Also compute A*x
+#     Ax = b - d;
+#
+#
+#
+
+
+
+
     #
     #
     #
