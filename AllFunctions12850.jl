@@ -1179,76 +1179,131 @@ module ocnmod
         itcnt = 0 # Iteration count
         ridx  = 1 # Count for indexing residuals
         push!(res,tol+1)
+
+        # Compute first residual and direction
+        Ax  = Ax_2D(Cx,Cy,xg,chk_per)
+        r0  = S - Ax
+        d0  = r0
+        x0  = xg
+
         while itcnt < maxiter
 
-            # --------------------
-            # 1. Compute Residual (r = b - Ax)
-            # --------------------
+            # # ------------------------------------------
+            # # 1. Compute Step Size α = d^2 / (d * A * d)
+            # # ------------------------------------------
+            Ad0 = Ax_2D(Cx,Cy,d0,chk_per)
+            α   = sum(r0.^2) / sum(d0 .* Ad0)
 
-                # 1st iteration, take x from guess/IC
-                if itcnt == 0
-                    x = xg
-                # Otherwise take x from prev iterations
-                else
-                    x = x_out
-                end
+            # # ------------------------------------------
+            # # 2. Get new x and new residual
+            # # ------------------------------------------
 
-                # Calculate Residual
-                Ax = Ax_2D(Cx,Cy,x,chk_per)
-                r1  = S - Ax
-                r0 = r1
+            x   = x0 + α*d0
 
-                # Store Residual
-                rchk = norm(r1)
-                push!(res,rchk)
-                if rchk < tol
-                    break
-                end
+            Ax1 = Ax_2D(Cx,Cy,x,chk_per)
+            r1  = S - Ax1
+            if norm(r1) < tol
+                push!(res,norm(r1))
+                x_out = x
+                break
+            end
 
-            # --------------------
-            # 2. Compute Direction d(i+1) = r(i+1) + βd(i)
-            # --------------------
+            # # ------------------------------------------
+            # # 3. Calculate new direction
+            # # ----
 
-                # For first iteration, just use residual as direction
-                # (negative of the gradient)
-                if itcnt == 0
-                    d  = r1
-                # For other directions, compute new direction explicitly
-                # using residual and direction from the last timestep
-                else
-                    #d0 = d_all[:,:,1]
-                    β  = sum(r1.^2) / sum(r0.^2)
-                    d  = r1 - β * d0
-                end
 
-                # Store step direction for next iteration
-                d0 = d
+            β = sum(r1.^2) / sum(r0.^2)
+            d1 = r1 + β*d0
 
-            # ------------------------------------------
-            # 3. Compute Step Size α = d^2 / (d * A * d)
-            # ------------------------------------------
 
-                Ad = Ax_2D(Cx,Cy,d,chk_per)
-                α  = sum(d .^2) / sum(d .* Ad)
-
-            # ---------------------
-            # 4. New x approximation (x(i+1) = x + α*d(i))
-            # ---------------------
-
-                # Calculate the next x
-                x_out[:,:] = x + α*d
-
-                # Add to counter
-                itcnt +=1
-                ridx  +=1
-
-                # Currently set to print on every 10,000th iteration
-                if itcnt%10^5 == 0
-                    elapsed = time()-start
-                    @printf("\nOn Iteration %i in %s s",itcnt,elapsed)
-                end
+            itcnt +=1
+            ridx  +=1
+            r0 = r1
+            d0 = d1
+            x0 = x
 
         end
+
+
+
+
+
+
+
+
+
+
+
+            #
+            # # --------------------
+            # # 1. Compute Residual (r = b - Ax)
+            # # --------------------
+            #
+            #     # 1st iteration, take x from guess/IC
+            #     if itcnt == 0
+            #         x = xg
+            #     # Otherwise take x from prev iterations
+            #     else
+            #         x = x_out
+            #     end
+            #
+            #     # Calculate Residual
+            #     Ax = Ax_2D(Cx,Cy,x,chk_per)
+            #     r1  = S - Ax
+            #     r0 = r1
+            #
+            #     # Store Residual
+            #     rchk = norm(r1)
+            #     push!(res,rchk)
+            #     if rchk < tol
+            #         break
+            #     end
+            #
+            # # --------------------
+            # # 2. Compute Direction d(i+1) = r(i+1) + βd(i)
+            # # --------------------
+            #
+            #     # For first iteration, just use residual as direction
+            #     # (negative of the gradient)
+            #     if itcnt == 0
+            #         d  = r1
+            #     # For other directions, compute new direction explicitly
+            #     # using residual and direction from the last timestep
+            #     else
+            #         #d0 = d_all[:,:,1]
+            #         β  = sum(r1.^2) / sum(r0.^2)
+            #         d  = r1 - β * d0
+            #     end
+            #
+            #     # Store step direction for next iteration
+            #     d0 = d
+            #
+            # # ------------------------------------------
+            # # 3. Compute Step Size α = d^2 / (d * A * d)
+            # # ------------------------------------------
+            #     Ad = Ax_2D(Cx,Cy,d.^2,chk_per)
+            #     Ad = Ax_2D(Cx,Cy,d,chk_per)
+            #     α  = sum(d .^2) / sum(d .* Ad)
+            #
+            # # ---------------------
+            # # 4. New x approximation (x(i+1) = x + α*d(i))
+            # # ---------------------
+            #
+            #     # Calculate the next x
+            #     x_out[:,:] = x + α*d
+            #
+            #     # Add to counter
+            #     itcnt +=1
+            #     ridx  +=1
+            #
+            #     # Currently set to print on every 10,000th iteration
+            #     if itcnt%10^5 == 0
+            #         elapsed = time()-start
+            #         @printf("\nOn Iteration %i in %s s",itcnt,elapsed)
+            #     end
+
+        #end
 
         elapsed = time()-start
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
