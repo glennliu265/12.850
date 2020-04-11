@@ -1195,11 +1195,11 @@ module ocnmod
 
                 # Calculate Residual
                 Ax = Ax_2D(Cx,Cy,x,chk_per)
-                r  = S - Ax
-                r0 = r
+                r1  = S - Ax
+                r0 = r1
 
                 # Store Residual
-                rchk = norm(r)
+                rchk = norm(r1)
                 push!(res,rchk)
                 if rchk < tol
                     break
@@ -1212,13 +1212,13 @@ module ocnmod
                 # For first iteration, just use residual as direction
                 # (negative of the gradient)
                 if itcnt == 0
-                    d  = r
+                    d  = r1
                 # For other directions, compute new direction explicitly
                 # using residual and direction from the last timestep
                 else
                     #d0 = d_all[:,:,1]
-                    β  = sum(r.^2) / sum(r0.^2)
-                    d  = r - β * d0
+                    β  = sum(r1.^2) / sum(r0.^2)
+                    d  = r1 - β * d0
                 end
 
                 # Store step direction for next iteration
@@ -1236,7 +1236,7 @@ module ocnmod
             # ---------------------
 
                 # Calculate the next x
-                x_out = x + α*d
+                x_out[:,:] = x + α*d
 
                 # Add to counter
                 itcnt +=1
@@ -1252,7 +1252,7 @@ module ocnmod
 
         elapsed = time()-start
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
-        return x_out,itcnt,r
+        return x_out,itcnt,res
     end
 #
 #
