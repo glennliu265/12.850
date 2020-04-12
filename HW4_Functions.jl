@@ -7,7 +7,7 @@ include("AllFunctions12850.jl")
 
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
-xgrid = [0:1:200;]
+xgrid = [0:1:50;]
 ygrid = [0:1:150;]
 # xgrid = [0:.1:2;]
 # ygrid = [0:.1:1;]
@@ -55,7 +55,7 @@ save_iter = 1000
 max_iter  = 1e5
 
 ## Source Term Settings
-ζ = zeros(Float64,xmax,ymax)
+ζ = ones(Float64,xmax,ymax) .* 10
 
 
 ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my] #.*0
@@ -74,19 +74,19 @@ contourf(mx,my,ζ')
 # West
 # 1 = Dirichlet, 2 = Neumann, 3 = Periodic
 
-WBC = 3
+WBC = 1
 wb_val = [y/y*0 for y in my]#[y/y for y in mx]
 
 # Eastern
-EBC = 3
+EBC = 1
 eb_val = [y/y*0 for y in my]#[y/y for y in my]
 
 # North
-NBC = 1
+NBC = 3
 nb_val = [x/x*0 for x in mx] #[sin(3*(x/Lx*pi)) for x in mx]
 
 # South
-SBC = 1
+SBC = 3
 sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
@@ -111,10 +111,10 @@ sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
         if SBC == 3
             sper = 1
         end
-        nper = chk_per[1]
-        sper = chk_per[2]
-        eper = chk_per[3]
-        wper = chk_per[4]
+        chk_per[1] = nper
+        chk_per[2] = sper
+        chk_per[3] = eper
+        chk_per[4] = wper
 
 
 # Compute Coefficients and modifications to BCs
@@ -141,10 +141,10 @@ ug = zeros(Float64,xmax,ymax)
 u_out,itcnt,r,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
 uo2,itcnt2,r2 = ocnmod.cgk_2d(Cx,Cy,S,ug,chk_per,tol,max_iter)
 ## F4 - Error Map, EW Periodic, 1e6 iteration
-fig5= contourf(mx,my,uo2',
+fig5= contourf(mx,my,u_out',
 #        clims = (-.1,.1),
         clabels=true,
-        levels=20,
+        #levels=20,
         title="SORStaggered Pt Vortices (No Flow E/W Periodic N/S), It#"*string(itcnt),
         xlabel="x (meters)",
         ylabel="y (meters)",
