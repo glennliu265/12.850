@@ -1185,6 +1185,12 @@ module ocnmod
         r0  = S - Ax
         d0  = r0
         x0  = xg
+        if norm(r0) < tol
+            x_out = x0
+            push!(res,norm(r0))
+            @printf("\nGuess is already below tolerance with residual %.2e",norm(r0))
+            return x_out,itcnt,res
+        end
 
         while itcnt < maxiter
 
@@ -1202,8 +1208,8 @@ module ocnmod
 
             Ax1 = Ax_2D(Cx,Cy,x,chk_per)
             r1  = S - Ax1
+            push!(res,norm(r1))
             if norm(r1) < tol
-                push!(res,norm(r1))
                 x_out = x
                 break
             end
@@ -1224,246 +1230,9 @@ module ocnmod
             x0 = x
 
         end
-
-
-
-
-
-
-
-
-
-
-
-            #
-            # # --------------------
-            # # 1. Compute Residual (r = b - Ax)
-            # # --------------------
-            #
-            #     # 1st iteration, take x from guess/IC
-            #     if itcnt == 0
-            #         x = xg
-            #     # Otherwise take x from prev iterations
-            #     else
-            #         x = x_out
-            #     end
-            #
-            #     # Calculate Residual
-            #     Ax = Ax_2D(Cx,Cy,x,chk_per)
-            #     r1  = S - Ax
-            #     r0 = r1
-            #
-            #     # Store Residual
-            #     rchk = norm(r1)
-            #     push!(res,rchk)
-            #     if rchk < tol
-            #         break
-            #     end
-            #
-            # # --------------------
-            # # 2. Compute Direction d(i+1) = r(i+1) + βd(i)
-            # # --------------------
-            #
-            #     # For first iteration, just use residual as direction
-            #     # (negative of the gradient)
-            #     if itcnt == 0
-            #         d  = r1
-            #     # For other directions, compute new direction explicitly
-            #     # using residual and direction from the last timestep
-            #     else
-            #         #d0 = d_all[:,:,1]
-            #         β  = sum(r1.^2) / sum(r0.^2)
-            #         d  = r1 - β * d0
-            #     end
-            #
-            #     # Store step direction for next iteration
-            #     d0 = d
-            #
-            # # ------------------------------------------
-            # # 3. Compute Step Size α = d^2 / (d * A * d)
-            # # ------------------------------------------
-            #     Ad = Ax_2D(Cx,Cy,d.^2,chk_per)
-            #     Ad = Ax_2D(Cx,Cy,d,chk_per)
-            #     α  = sum(d .^2) / sum(d .* Ad)
-            #
-            # # ---------------------
-            # # 4. New x approximation (x(i+1) = x + α*d(i))
-            # # ---------------------
-            #
-            #     # Calculate the next x
-            #     x_out[:,:] = x + α*d
-            #
-            #     # Add to counter
-            #     itcnt +=1
-            #     ridx  +=1
-            #
-            #     # Currently set to print on every 10,000th iteration
-            #     if itcnt%10^5 == 0
-            #         elapsed = time()-start
-            #         @printf("\nOn Iteration %i in %s s",itcnt,elapsed)
-            #     end
-
-        #end
-
         elapsed = time()-start
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
         return x_out,itcnt,res
     end
-#
-#
-#
-
-
-
-
-    #
-    #
-    #
-    #         """
-    #         2d_cg
-    #         # Solve Ax=b using conjugent gradient method (Krylov)
-    #
-    #
-    #         # Inputs:
-    #              Cx       = x coefficients (3 x n)
-    #              Cy       = y coefficients (3 x m)
-    #              S        = Modified Forcing Term (n x m)
-    #              ug       = Initial guess at quantity u (n x m)
-    #              tol      = Error Tolerance
-    #              ω        = Weight for SOR
-    #              method   = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
-    #              wper     = Periodic Western Boundary (1 = periodic, 0 = not)
-    #              eper     = Periodic Eastern Boundary
-    #              nper     = Periodic Northern Boundary
-    #              maxiter  = Maximum amount of iterations permitted
-    #              saveiter = Amount of iterations to save
-    #
-    #          Out:
-    #              u_out   = Final approximation of quantity[n x m]
-    #              itcnt   = # of iterations to convergence
-    #              r       = Array of residuals per iteration
-    #              err_map = Map of the error for the final timestep
-    #
-    #         """
-    #         function 2d_cg(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter,saveiter)
-    #
-    #             xmax = size(Cx,2)
-    #             ymax = size(Cy,2)
-    #
-    #             # Preallocate
-    #             u = zeros(Float64,2,xmax,ymax)
-    #             r = Float64[]
-    #
-    #             # Scrap (Delete Later: Save first 10 iterations)
-    #             u_scrap   = zeros(Float64,saveiter,xmax,ymax)
-    #             err_scrap = zeros(Float64,saveiter,xmax,ymax)
-    #             err_map = zeros(Float64,xmax, ymax)
-    #
-    #             # Assign ug to the first entry
-    #             u[1,:,:] = ug # 1 will store the previous guess
-    #             u[2,:,:] = ug # 2 will store the updated guess
-    #
-    #             itcnt = 0
-    #             while residual < tol || itcnt == 0
-    #
-    #                 ##  Compute first residual
-    #                 res = zeros(Float64,xmax,ymax)
-    #
-    #                 for j = 1:ymax
-    #
-    #                     # Get Coefficients (y)
-    #                     B1  = Cy[1,j]
-    #                     B5  = Cy[3,j]
-    #
-    #                     for i = 1:xmax
-    #                         # Get Coefficients (x)
-    #                         B2 = Cx[1,i]
-    #                         B3 = Cy[2,j] + Cx[2,i]
-    #                         B4 = Cx[3,i]
-    #
-    #                         # Retrieve value from Source Term
-    #                         f = S[i,j]
-    #
-    #                         # First, assume periodic boudaries
-    #                         # Make i indices periodic
-    #                         i2 = i-1
-    #                         i4 = i+1
-    #                         if i == 1
-    #                             i2 = xmax
-    #                         end
-    #                         if i == xmax
-    #                             i4 = 1
-    #                         end
-    #
-    #                         # Make j indices periodic
-    #                         j1 = j-1
-    #                         j5 = j+1
-    #                         if j == 1
-    #                             j1 = ymax
-    #                         end
-    #                         if j == ymax
-    #                             j5 = 1
-    #                         end
-    #
-    #                         # Interior Points, Periodic
-    #                         u1 = u[2,i,j1]
-    #                         u2 = u[2,i2,j]
-    #                         u3 = u[2,i,j]
-    #                         u4 = u[2,i4,j]
-    #                         u5 = u[2,i,j5]
-    #
-    #                         # Modifications for nonperiodic cases
-    #                         if wper != 1 && i == 1
-    #                             u2 = 0 # All i-1 terms = 0
-    #                         end
-    #
-    #                         if eper != 1 && i == xmax
-    #                             u4 = 0 # All i+1 terms = 0
-    #                         end
-    #
-    #                         if sper != 1 && j == 1
-    #                             u1 = 0 # All j-1 terms = 0
-    #                         end
-    #
-    #                         if nper != 1 && j == ymax
-    #                             u5 = 0 # All j+1 terms = 0
-    #                         end
-    #
-    #                         res[i,j] = (B1*u1+B2*u2+B3*u3+B4*u4+B5*u5) - f
-    #                     end
-    #                 end
-    #
-    #
-    #                 push!(r,norm(err))
-    #                 itcnt += 1
-    #
-    #                 # Save error map and break on last iteration
-    #                 if itcnt > maxiter
-    #                     err_map = err;
-    #                     break
-    #                 end
-    #
-    #                 # Currently set to print on every 10,000th iteration
-    #                 if itcnt%10^5 == 0
-    #                     elapsed = time()-start
-    #                     @printf("\nOn Iteration %i in %s s",itcnt,elapsed)
-    #                 end
-    #
-    #                 # Scrap: Save first "saveiter" iterations and error for animation
-    #                 if itcnt <=saveiter
-    #                     u_scrap[itcnt,:,:]=u[1,:,:]
-    #                     err_scrap[itcnt,:,:]=err
-    #                 end
-    #
-    #             end
-    #             u_out = u[1,:,:]
-    #
-    #             elapsed = time()-start
-    #             @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
-    #             return u_out, itcnt, r, u_scrap, err_scrap, err_map
-    #
-    #         end
-
-    #end
 # Module End
 end
