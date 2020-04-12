@@ -57,7 +57,6 @@ max_iter  = 1e5
 ## Source Term Settings
 ζ = ones(Float64,xmax,ymax) .* 10
 
-
 ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my] #.*0
 #[sin(x/Lx*pi)^2 + cos(y/Ly*pi)^2 for x in mx, y in my]
 # ζ[1,75]  = 10

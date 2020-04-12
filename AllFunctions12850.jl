@@ -665,7 +665,6 @@ module ocnmod
         return x, itcnt,r
     end
 
-
     """
     -----------------------------------------------------------
     FD_calc_coeff_2D
@@ -800,29 +799,28 @@ module ocnmod
 
     """
     FD_itrsolve_2D
-    # Iterative Solver for 2D finite-difference problems
+        # Iterative Solver for 2D finite-difference problems
 
 
-    # Inputs:
-         Cx       = x coefficients (3 x n)
-         Cy       = y coefficients (3 x m)
-         S        = Modified Forcing Term (n x m)
-         ug       = Initial guess at quantity u (n x m)
-         tol      = Error Tolerance
-         ω        = Weight for SOR
-         method   = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
-         wper     = Periodic Western Boundary (1 = periodic, 0 = not)
-         eper     = Periodic Eastern Boundary
-         nper     = Periodic Northern Boundary
-         maxiter  = Maximum amount of iterations permitted
-         saveiter = Amount of iterations to save
+        # Inputs:
+             Cx       = x coefficients (3 x n)
+             Cy       = y coefficients (3 x m)
+             S        = Modified Forcing Term (n x m)
+             ug       = Initial guess at quantity u (n x m)
+             tol      = Error Tolerance
+             ω        = Weight for SOR
+             method   = [1,Jacobi] [2,Gauss-Siedel] [3,SOR]
+             wper     = Periodic Western Boundary (1 = periodic, 0 = not)
+             eper     = Periodic Eastern Boundary
+             nper     = Periodic Northern Boundary
+             maxiter  = Maximum amount of iterations permitted
+             saveiter = Amount of iterations to save
 
-     Out:
-         u_out   = Final approximation of quantity[n x m]
-         itcnt   = # of iterations to convergence
-         r       = Array of residuals per iteration
-         err_map = Map of the error for the final timestep
-
+         Out:
+             u_out   = Final approximation of quantity[n x m]
+             itcnt   = # of iterations to convergence
+             r       = Array of residuals per iteration
+             err_map = Map of the error for the final timestep
     """
     function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter,saveiter)
         xmax = size(Cx,2)
@@ -979,26 +977,23 @@ module ocnmod
 
     end
 
-
-
     """
     2D_calc_residual(Cx,Cy,S,x,chk_per)
-    Calculate the residual (r = b - Ax), where:
+        Calculate the residual (r = b - Ax), where:
         x       = some initial guess [i x j]
         b       = Source term (S [i x j]_
         A       = Matrix of coefficients in x and y directions (Cx [5 x i], Cy [5 x j])
         chk_per = boolean (N-per,S-per,E-per,W-per)
 
-    Inputs:
-        1) Cx      = Coefficients in x-direction [5 x i]
-        2) Cy      = Coefficients in y-direction [5 x j]
-        3) S       = Source term                 [i x j]
-        4) x       = Guess                       [i x j]
-        5) chk_per = Boolean for periodic BC     [4 (N,S,E,W)], 1 = period, 0 = not
+        Inputs:
+            1) Cx      = Coefficients in x-direction [5 x i]
+            2) Cy      = Coefficients in y-direction [5 x j]
+            3) S       = Source term                 [i x j]
+            4) x       = Guess                       [i x j]
+            5) chk_per = Boolean for periodic BC     [4 (N,S,E,W)], 1 = period, 0 = not
 
-    Output:
-        1) res     = residual r = b - Ax [i x j]
-
+        Output:
+            1) res     = residual r = b - Ax [i x j]
     """
 
     function calc_res_2d(Cx,Cy,S,x,chk_per)
@@ -1078,19 +1073,19 @@ module ocnmod
         return res
     end
 
-"""
-    # Ax_2D(Cx,Cy,x,chk_per)
-    # Function to compute Ax = b iteratively where
-        x       = some initial guess [i x j]
-        A       = Matrix of coefficients in x and y directions (Cx [5 x i], Cy [5 x j])
-        chk_per = boolean (N-per,S-per,E-per,W-per)
+    """
+    Ax_2D(Cx,Cy,x,chk_per)
+        # Function to compute Ax = b iteratively where
+            x       = some initial guess [i x j]
+            A       = Matrix of coefficients in x and y directions (Cx [5 x i], Cy [5 x j])
+            chk_per = boolean (N-per,S-per,E-per,W-per)
 
-    Inputs:
-        1) Cx      = Coefficients in x-direction [5 x i]
-        2) Cy      = Coefficients in y-direction [5 x j]
-        4) x       = Guess                       [i x j]
-        5) chk_per = Boolean for periodic BC     [4 (N,S,E,W)], 1 = period, 0 = not
-"""
+        Inputs:
+            1) Cx      = Coefficients in x-direction [5 x i]
+            2) Cy      = Coefficients in y-direction [5 x j]
+            4) x       = Guess                       [i x j]
+            5) chk_per = Boolean for periodic BC     [4 (N,S,E,W)], 1 = period, 0 = not
+    """
     function Ax_2D(Cx,Cy,x,chk_per)
         xmax = size(Cx,2)
         ymax = size(Cy,2)
@@ -1165,8 +1160,27 @@ module ocnmod
         return b
     end
 
-"""
-"""
+    """
+    cgk_2d(Cx,Cy,S,xg,chk_per,tol,maxiter)
+
+    Conjugate-Gradient Krylov Method, applied for solving the 2D
+    problem Ax = b, where A contains the coefficients for x and y,
+    x is the vector of the target quantities and b is the source term S
+
+    Inputs:
+        1) Cx      - Coefficients in the x-direction
+        2) Cy      - Coefficients in the y-direction
+        3) S       - Source term
+        4) xg      - Guess at the quantity x
+        5) chk_per - Boolean for periodic BCs
+        6) tol     - Tolerance for residual
+        7) maxiter - maximum number of iterations
+
+    Outputs
+        1) x_out   - final guess for x
+        2) itcnt   - count of iterations
+        3) res     - residual for each iteration
+    """
     function cgk_2d(Cx,Cy,S,xg,chk_per,tol,maxiter)
         start = time()
         xmax = size(Cx,2)
