@@ -1248,5 +1248,128 @@ module ocnmod
         @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
         return x_out,itcnt,res
     end
+
+
+"""
+    ddx_1d(ϕ,Δx)
+
+    Takes derivative of property ϕ where
+    ϕ is given at the edges of the cell and
+    Δx is the cell width. For each cell:
+
+        ϕ_x = [ϕ(i+1)-ϕ(i)] / Δx(i)
+
+    Inputs
+      1) ϕ  = vector of size [imax+1,]
+      2) Δx = cell spacing of size [1,imax]
+
+
+
+"""
+    function ddx_1d(ϕ,Δx)
+
+        imax = length(Δx)
+
+        # Add another dimension to loop over
+        # (assuming independence)
+        if length(size(ϕ)) > 1
+            jmax = size(ϕ,2)
+        else
+            jmax = 1
+        end
+
+        ϕ_x  = zeros(Float64,imax,jmax)
+        for j = 1:jmax
+            for i = 1:imax
+                print("now on")
+                print(i)
+
+                if i < imax
+                    print(i)
+                    print("i   < imax")
+                    ϕ_x[i,j] = (ϕ[i+1,j] - ϕ[i,j]) / Δx[i]
+                else
+                    print("i = = imax")
+                    ϕ_x[i,j] = ϕ_x[i-1,j]
+                end
+
+            end
+        end
+        return ϕ_x
+    end
+
+    """
+    -----------------------------------------------------------
+    CN_make_matrix_2d
+    -----------------------------------------------------------
+        Given the finite difference form of Crank-Nicolson:
+
+            u[n+1] - Δt/θ*(B*u[n+1] + f[n+1]) = u[n] + Δt/(θ-1)*(C*u[n] + f[n])
+
+        Rewrites the Equation to the form:
+
+            B'*u[n+1] = b
+
+        Where the prime ' indicates the term has been "premultiplied" by the
+        corresponding weight. (ex. B' = B*(-Δt/θ))
+
+            b = C'*u[n] + f'[n] + f'[n+1]
+
+        This ultimately prepares the matrices to enter into a iterative solver
+
+        Inputs
+            1) Δt = Timestep size
+            2) θ  = Weight applied to n+1 step [θ=0.5, CN; =1,BWEuler; =0,FWEuler]
+            3) IC = Initial Conditions
+            4) C  = Matrix of Coefficients on r.h.s. (step n)
+            5) B  = Matrix of Coefficients on l.h.s. (step n+1)
+            6) fr = Forcing/Source Term on r.h.s. (step n  )
+            7) fl = Forcing/Source Term on l.h.s. (step n+1)
+        Output
+            1) b  = premultiplied "Forcing Term" that combines Inputs(3,4,6,7)
+            2) A  = premultiplied B matrix
+        """
+    function CN_make_matrix_2d(Δt,θ,IC,Cx,Cy,Bx,By,fr,fl,kprint,chk_per)
+
+        start = time()
+
+        # Determine LHS and RHS multipliers
+        # LHS - For timestep (n+1), multiply by θ
+        l_mult =  -Δt*(θ)
+        # RHS - For timestep (n)  , multiply by 1-θ
+        r_mult =  Δt*(1-θ)
+
+
+        # Multiply variables by time and theta factors
+        Bx      = Bx  .* l_mult
+        By      = By  .* l_mult
+        fl      = fl .* l_mult
+        Cx      = Cx  .* r_mult
+        Cy      = Cy  .* r_mult
+        fr      = fr .* r_mult
+
+        # Meth2: Add single digit post-multiplication
+        # To diagonal (Ck,Bk)
+        Cx[2,:] = Cx[2,:] .+ 1
+        #Cy[2,:] = Cy[2,:] .+ 1
+        By[2,:] = By[2,:] .+ 1
+        #Bx[2,:] = Bx[2,:] .+ 1
+
+        # Now combine terms
+        Cx = Ax_2D(Cx,Cy,IC,chk_per)
+        b     = Cx + fr - fl # Bring Sl from left side
+
+        Ax     = Bx
+        Ay     = By
+
+        k = kprint
+        #print_exeq(k,length(fr),b,C,IC,fr,fl,A)
+
+        elapsed = time() - start
+        #@printf("Completed matrix prep in %fs\n",elapsed)
+        return Ax,Ay,b
+    end
+
+
 # Module End
 end

@@ -39,12 +39,19 @@ x_c0      = δx
 y_c0      = δy
 
 ## Set Diffusivity Parameter -------------------------------
-# Constant-value
-κx        = ones(Float64,1,xmax)
-κy        = ones(Float64,1,ymax)
-
+# For vorticity
+κx        = ones(Float64,1,xmax) .* 1e-4
+κy        = ones(Float64,1,ymax) .* 1e-4
 κx0       = κx[1]
 κy0       = κy[1]
+
+# For streamfunction
+κxp        = ones(Float64,1,xmax)
+κyp        = ones(Float64,1,ymax)
+κxp0       = κxp[1]
+κyp0       = κyp[1]
+
+
 
 ## Iteration Parameters ------------------------------
 tol       = 1e-9
@@ -54,20 +61,65 @@ method    = 3
 save_iter = 1000
 max_iter  = 1e5
 
-## Source Term Settings
-ζ = ones(Float64,xmax,ymax) .* 10
+## Time parameters
+dt        = 3600*24*30 #1 * 3600 * 24 * 30     # One Month Resolution
+ts_max    = 36
+θ         = 0.5
 
-ζ = [sin(x/Lx*pi)^2 + sin(y/Ly*pi)^2 for x in mx, y in my] #.*0
-#[sin(x/Lx*pi)^2 + cos(y/Ly*pi)^2 for x in mx, y in my]
-# ζ[1,75]  = 10
-# ζ[40,150] = -10
-# ζ[2,7] = -10
-# ζ[3,7] = 10
-#ζ[25,75] = 2
+## Source Term Settings -------------------------------
+ρ0 = 1025 #kg/m3
+H  = 1000 #m
+τ0 = 0.1 #.* ones(xmax,ymax)  #N/m2
 
-#ones(Float64,xmax,ymax).*10#
-contourf(mx,my,ζ')
- #heatmap(mx,my,ζ')
+# Set the wind directions
+# Zonal Wind
+τx = [ -τ0*cos(pi*y/Ly)*(x/x) for x in mx, y in my] # Switch from westward to eastward
+# contourf(mx,my,τx',
+#         levels=10,
+#         clabels=true,
+#         title="Eastward Wind Stress (N/m2)",
+#         xlabel="Zonal Distance (m)",
+#         ylabel="Meridional Distance (m)")
+#
+# txplot = convert(Array{Float32},τx ./ findmax(τx)[1])
+
+# Meridional Wind
+#τy = [ -τ0*cos(2*pi*x/Lx)*(y/y) for x in mx, y in my] # Switch from westward to eastward
+τy = zeros(xmax,ymax)
+# contourf(mx,my,τy',
+#         levels=10,
+#         clabels=true,
+#         title="Northward Wind Stress (N/m2)",
+#         xlabel="Zonal Distance (m)",
+#         ylabel="Meridional Distance (m)")
+# include("AllFunctions12850.jl")
+#dτx_dy = ocnmod.ddx_1d(τx,y_f)
+
+
+# Approximate the x and y derivatives of the wind directions
+# Note: Just repeat the first elemtent for now
+#dτx_dy = ocnmod.ddx_1d(vcat(τx[1],τx),y_f)
+dτx = [ τ0*pi/Ly*sin(pi*y/Ly)*(x/x) for x in mx, y in my]
+
+#τ0*pi/Ly .* sin.( pi .* my ./ Ly)
+dτy = τy
+#dτy_dx = ocnmod.ddx_1d(vcat(τy[1],τy),x_f)
+
+# Time varying zonal
+dτxdt = zeros(Float64,xmax,ymax,12)
+mult = zeros(Float64,12)
+for m = 1:12
+        mult[m] = cos(2*m/12*pi);
+        dτxdt[:,:,m] = dτx .* mult[m];
+end
+# plot(mult)
+
+# Time varying meridional
+dτydt = zeros(Float64,xmax,ymax,12)
+
+
+S = 1/(ρ0*H) * (dτxdt + dτydt)
+
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
 # West
@@ -90,7 +142,6 @@ sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
 ## Run the script
-
 # Set periodic boundary options DO NOT EDIT
 #___________________________________________
         chk_per = zeros(Int,4)
@@ -116,40 +167,109 @@ sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
         chk_per[4] = wper
 
 
-# Compute Coefficients and modifications to BCs
-Cx,Bx = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
-Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
+# Preallocate
+u_t = zeros(Float64,xmax,ymax,ts_max)
+ψ_t = zeros(Float64,xmax,ymax,ts_max)
 
-# Modify Boundary Conditions
-ζ[1,:]    -= Bx[1,:] # South BC
-ζ[xmax,:] -= Bx[2,:] # North BC
-ζ[:,1]    -= By[1,:] # West BC
-ζ[:,ymax] -= By[2,:] # East BC
+for t = 1:ts_max
 
-# # # note that this assumes xmax = ymax (equal sized spacing on x and y)
-# A = zeros(Float64,5,xmax)
-# A[1,:] = Cy[1,:]            # [  i , j-1]
-# A[2,:] = Cx[1,:]            # [i-1 ,   j]
-# A[3,:] = Cx[2,:] .+ Cy[2,:] # [  i ,   j]
-# A[4,:] = Cx[3,:]            # [i+1 ,   j]
-# A[5,:] = Cy[3,:]            # [  i , j+1]
+        if t > 1
+                x_init = u_t[:,:,t-1]
+        else
+                x_init = zeros(Float64,xmax,ymax)
+        end
+        loopstart = time()
+        m = t%12
 
-S=ζ
-ug = zeros(Float64,xmax,ymax)
+        # Get Next Month (for eqn L.H.S.)
+        nm = m + 1
 
-u_out,itcnt,r,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
-uo2,itcnt2,r2 = ocnmod.cgk_2d(Cx,Cy,S,ug,chk_per,tol,max_iter)
+        # Set December month to 12
+        if m == 0
+            m = 12
+        end
+
+        # Get Corresponding forcing term
+        S0 = S[:,:,m]
+        S1 = S[:,:,nm]
+
+        # Compute Coefficients and modifications to BCs
+        Cx0,Bx0 = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cy0,By0 = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
+        Cx1,Bx1 = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cy1,By1 = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
+
+        # Modify Boundary Conditions
+        S0[1,:]    -= Bx0[1,:] # South BC
+        S0[xmax,:] -= Bx0[2,:] # North BC
+        S0[:,1]    -= By0[1,:] # West BC
+        S0[:,ymax] -= By0[2,:] # East BC
+        S1[1,:]    -= Bx1[1,:] # South BC
+        S1[xmax,:] -= Bx1[2,:] # North BC
+        S1[:,1]    -= By1[1,:] # West BC
+        S1[:,ymax] -= By1[2,:] # East BC
+
+        # Set up Crank Nicolson
+        ug = zeros(Float64,xmax,ymax)
+        Ax,Ay,b = ocnmod.CN_make_matrix_2d(dt,θ,ug,Cx0,Cy0,Cx1,Cy1,S0,S1,1e5,chk_per)
+
+        #u_out,itcnt,r,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
+        u_t[:,:,t],itcnt2,r2 = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter)
+
+        # Solving for streamfunction
+        S_psi = u_t[:,:,t]
+        Cxp,Bxp = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cyp,Byp = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
+        S_psi[1,:]    -= Bxp[1,:] # South BC
+        S_psi[xmax,:] -= Bxp[2,:] # North BC
+        S_psi[:,1]    -= Byp[1,:] # West BC
+        S_psi[:,ymax] -= Byp[2,:] # East BC
+        ψ_t[:,:,t],~,~ = ocnmod.cgk_2d(Cxp,Cyp,S_psi,ug,chk_per,tol,max_iter)
+        # Solve for streamfunction
+
+end
+
+
+anim3 = @animate for t ∈ 1:ts_max
+        contourf(mx,my,u_t[:,:,t]',
+                clabels=true,
+                clims=(-1e-3,1e-3),
+                title="Vorticity at t="*string(t),
+                xlabel="x (meters)",
+                ylabel="y (meters)",
+                levels=10,
+                fillcolor=:inferno
+                )
+        end
+gif(anim3,"HW4_vortfirsttest.gif",fps=10)
+
+anim4 = @animate for t ∈ 1:ts_max
+        contourf(mx,my,ψ_t[:,:,t]'./findmax(ψ_t)[1],
+                clabels=true,
+#                clims=(-1e-3,1e-3),
+                title="Streamfunction at t="*string(t),
+                xlabel="x (meters)",
+                ylabel="y (meters)",
+                levels=10,
+                fillcolor=:inferno
+                )
+        end
+gif(anim4,"HW4_psifirsttest.gif",fps=10)
+
+
+
 ## F4 - Error Map, EW Periodic, 1e6 iteration
 fig5= contourf(mx,my,u_out',
 #        clims = (-.1,.1),
         clabels=true,
         #levels=20,
-        title="SORStaggered Pt Vortices (No Flow E/W Periodic N/S), It#"*string(itcnt),
+        title="SORStaggered Pt Vortices (No Flow E/W Periodic N/S), t="*string(t),
         xlabel="x (meters)",
         ylabel="y (meters)",
         seriescolor=:balance
         #seriescolor=:inferno
         )
+
 
 diffme = u_out-uo2;
 fig5= contourf(mx,my,diffme',
