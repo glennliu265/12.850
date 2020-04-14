@@ -165,20 +165,40 @@ dτydt2 = [ 1 for x in mx, y in my, m in 1:12]
     #Set and restrict to interval
     xi = 2
     yi = 10
+    qscale = 2
     u  = dτxdt2[1:xi:end-1,1:yi:end-1,:]
     v  = dτydt2[1:xi:end-1,1:yi:end-1,:]
     xp = mx[1:xi:end-1]; xpm = length(xp)
     yp = my[1:yi:end-1]; ypm = length(yp)
     aniquiv = @animate for t ∈ 1:12
-        up = u[:,:,t] ./ findmax(abs.(u[:,:,t]))[1]
-        vp = v[:,:,t] ./ findmax(abs.(v[:,:,t]))[1]
+        up = u[:,:,t] .* qscale
+        vp = v[:,:,t] .* qscale
+
         pts = vec([(xp[i], yp[j]) for i=1:xpm, j=1:ypm])
         uv = vec([(up[i,j],vp[i,j]) for i=1:xpm, j=1:ypm])
+
         Plots.quiver(pts,quiver=(uv),
         title="T = "*string(t),
-        arrow=Plots.arrow(0.5,0.5))
+        xlims=(0,50),
+        lc="black")
     end
     gif(aniquiv,"HW4_Quiverin.gif",fps=2)
+
+    # ----------------
+    # FUNCTIONIZED
+    xi = 2
+    yi = 10
+    qscale = 2
+    aniquiv2 = @animate for t ∈ 1:12
+        u = dτxdt2[:,:,t]
+        v = dτydt2[:,:,t]
+        pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,xi,yi,qscale)
+        Plots.quiver(pts,quiver=(uv),
+        title="T = "*string(t),
+        xlims=(0,50),
+        lc="black")
+    end
+    gif(aniquiv2,"HW4_Quiverin2.gif",fps=2)
 
 
 

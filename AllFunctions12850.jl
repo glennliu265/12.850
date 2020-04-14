@@ -1500,19 +1500,38 @@ module ocnmod
     -----------------------------------------------------------
         Setup for quiverplot
 
-        Inputs
+        Spaces points by x_sp, y_sp, and scales variables
 
-            1) x = vector: x points
-            2) y = vector:  points
-            3) u = array [i x j]
-            4) v = array [i x j]
-            4  qscale = number value
+        Inputs
+            1) x        = vector: x points
+            2) y        = vector: y points
+            3) u        = array [i x j]
+            4) v        = array [i x j]
+            5) x_sp     = x-spacing (plot every x_sp points)
+            6) y_sp     = y-spacing (plot every y_sp points)
+            5) qscale   = number value to scale up vectors
 
         Outputs
-            1) ψ     - Streamfunction
-            2) itcnt - iterations to convergence
-            3) r     - residual at each iteration
+            1) pts      = vector [i*j] of tuples, coordinate pairs
+            2) uv       = vector [i*j] of tuples, vector component values
+
     """
+    function quiverprep_2d(x,y,u,v,x_sp,y_sp,qscale)
+        # Space variables
+        us  = u[1:x_sp:end-1,1:y_sp:end-1] .* qscale
+        vs  = v[1:x_sp:end-1,1:y_sp:end-1] .* qscale
+        xp  = x[1:x_sp:end-1]; xpm = length(xp)
+        yp  = y[1:y_sp:end-1]; ypm = length(yp)
+
+        # Combine
+        pts = vec([(xp[i], yp[j]) for i=1:xpm, j=1:ypm])
+        uv = vec([(us[i,j],vs[i,j]) for i=1:xpm, j=1:ypm])
+        return pts, uv
+    end
+
+
+
+
 
 
 
