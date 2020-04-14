@@ -427,9 +427,9 @@ module ocnmod
     end
 
     """
-    # Function to print a sample equation
+    print_exeq
+        Function to print a sample equation
     """
-
     function print_exeq(k,kmax,b,C,IC,fr,fl,A)
         if k == 1
             IC0 = 0
@@ -452,6 +452,7 @@ module ocnmod
         print("\n\tb =  (2)*(3)+(4)+(5)...")
         print("\n")
     end
+
     """
     -----------------------------------------------------------
     CN_make_matrix
@@ -529,7 +530,8 @@ module ocnmod
 
     """
     -----------------------------------------------------------
-    # Function to print a sample equation
+    # print_itrsolv
+        Function to print a sample equation
     -----------------------------------------------------------
         Prints sample equation for a given k level and every
         itcnt iteration. Designed to run within the loop for
@@ -798,7 +800,9 @@ module ocnmod
     end
 
     """
+    -----------------------------------------------------------
     FD_itrsolve_2D
+    -----------------------------------------------------------
         # Iterative Solver for 2D finite-difference problems
 
 
@@ -978,7 +982,9 @@ module ocnmod
     end
 
     """
+    -----------------------------------------------------------
     2D_calc_residual(Cx,Cy,S,x,chk_per)
+    -----------------------------------------------------------
         Calculate the residual (r = b - Ax), where:
         x       = some initial guess [i x j]
         b       = Source term (S [i x j]_
@@ -995,7 +1001,6 @@ module ocnmod
         Output:
             1) res     = residual r = b - Ax [i x j]
     """
-
     function calc_res_2d(Cx,Cy,S,x,chk_per)
         xmax = size(Cx,2)
         ymax = size(Cy,2)
@@ -1074,7 +1079,9 @@ module ocnmod
     end
 
     """
+    -----------------------------------------------------------
     Ax_2D(Cx,Cy,x,chk_per)
+    -----------------------------------------------------------
         # Function to compute Ax = b iteratively where
             x       = some initial guess [i x j]
             A       = Matrix of coefficients in x and y directions (Cx [5 x i], Cy [5 x j])
@@ -1161,25 +1168,27 @@ module ocnmod
     end
 
     """
+    -----------------------------------------------------------
     cgk_2d(Cx,Cy,S,xg,chk_per,tol,maxiter)
+    -----------------------------------------------------------
 
-    Conjugate-Gradient Krylov Method, applied for solving the 2D
-    problem Ax = b, where A contains the coefficients for x and y,
-    x is the vector of the target quantities and b is the source term S
+        Conjugate-Gradient Krylov Method, applied for solving the 2D
+        problem Ax = b, where A contains the coefficients for x and y,
+        x is the vector of the target quantities and b is the source term S
 
-    Inputs:
-        1) Cx      - Coefficients in the x-direction
-        2) Cy      - Coefficients in the y-direction
-        3) S       - Source term
-        4) xg      - Guess at the quantity x
-        5) chk_per - Boolean for periodic BCs
-        6) tol     - Tolerance for residual
-        7) maxiter - maximum number of iterations
+        Inputs:
+            1) Cx      - Coefficients in the x-direction
+            2) Cy      - Coefficients in the y-direction
+            3) S       - Source term
+            4) xg      - Guess at the quantity x
+            5) chk_per - Boolean for periodic BCs
+            6) tol     - Tolerance for residual
+            7) maxiter - maximum number of iterations
 
-    Outputs
-        1) x_out   - final guess for x
-        2) itcnt   - count of iterations
-        3) res     - residual for each iteration
+        Outputs
+            1) x_out   - final guess for x
+            2) itcnt   - count of iterations
+            3) res     - residual for each iteration
     """
     function cgk_2d(Cx,Cy,S,xg,chk_per,tol,maxiter)
         start = time()
@@ -1249,53 +1258,82 @@ module ocnmod
         return x_out,itcnt,res
     end
 
-
-"""
+    """
+    -----------------------------------------------------------
     ddx_1d(ϕ,Δx)
+    -----------------------------------------------------------
 
-    Takes derivative of property ϕ where
-    ϕ is given at the edges of the cell and
-    Δx is the cell width. For each cell:
+        Takes derivative of property ϕ where
+        ϕ is given at the edges of the cell and
+        Δx is the cell width. For each cell using one of the methods:
 
-        ϕ_x = [ϕ(i+1)-ϕ(i)] / Δx(i)
+        Method (1) - Forward Differencing
 
-    Inputs
-      1) ϕ  = vector of size [imax+1,]
-      2) Δx = cell spacing of size [1,imax]
+            ϕ_x = [ϕ(i+1)-ϕ(i)] / Δx(i)
 
+        Method (2) - Backward Differencing
 
+            ϕ_x = [ϕ(i)-ϕ(i-1)] / Δx(i)
 
-"""
-    function ddx_1d(ϕ,Δx)
+        Method (3) - Central Differencing
 
+            ϕ_x = [ϕ(i+1)-ϕ(i-1)] / 2Δx(i)
+
+        Inputs
+          1) ϕ      = matrix of size [i]
+          2) Δx     = cell spacing of size [1,imax]
+          3) method = (1,2,or 3), see above
+        Outputs
+          1) ϕ_x    = Derivative of ϕ
+          2) x_new  = New x indices
+          3) Δx_new = Distances of new cell
+    """
+    function ddx_1d(ϕ,Δx,method)
+
+        # Determine final size based on method
         imax = length(Δx)
 
-        # Add another dimension to loop over
-        # (assuming independence)
-        if length(size(ϕ)) > 1
-            jmax = size(ϕ,2)
-        else
-            jmax = 1
+        # For forward differencing, loop(1:n-1)
+        if method == 1
+            istart = 1
+            imax_new = imax-1
+            isize  = imax_new
+        # For backward differencing, loop(2:n)
+        elseif method == 2
+            istart = 2
+            imax_new = imax
+            isize = imax-1
+        # For central differencing, loop(2:n-1)
+        elseif method == 3
+            imax_new = imax-1
+            isize    = imax-2
+            istart   = 2
         end
 
-        ϕ_x  = zeros(Float64,imax,jmax)
-        for j = 1:jmax
-            for i = 1:imax
-                print("now on")
-                print(i)
 
-                if i < imax
-                    print(i)
-                    print("i   < imax")
-                    ϕ_x[i,j] = (ϕ[i+1,j] - ϕ[i,j]) / Δx[i]
-                else
-                    print("i = = imax")
-                    ϕ_x[i,j] = ϕ_x[i-1,j]
-                end
+        # Preallocate
+        ϕ_x  = zeros(Float64,isize)
+        x_new = [istart:imax_new;]
+        Δx_new = Δx[istart:imax_new]
 
+        icnt = 1
+        for i = istart:imax_new
+
+            # Forward Differencing
+            if method == 1
+                ϕ_x[icnt] = (ϕ[i+1] - ϕ[i]) / Δx[i]
+
+            # Backward Differencing
+            elseif method == 2
+                ϕ_x[icnt] = (ϕ[i] - ϕ[i-1]) / Δx[i]
+
+            # Central Differencing
+            elseif method == 3
+                ϕ_x[icnt] = (ϕ[i+1] - ϕ[i-1]) / (2*Δx[i])
             end
+            icnt +=1
         end
-        return ϕ_x
+        return ϕ_x,x_new,Δx_new
     end
 
     """
@@ -1369,6 +1407,120 @@ module ocnmod
         #@printf("Completed matrix prep in %fs\n",elapsed)
         return Ax,Ay,b
     end
+
+    """
+    -----------------------------------------------------------
+    PV Inversion Script (invPV_2d)
+    -----------------------------------------------------------
+        Aggregation of HW3 into a script.
+        Given a vorticity field, computes the streamfunction
+
+        Dependencies (from ocnmod module):
+            FD_calc_coeff_2D
+            cgk_2d
+
+        Inputs
+
+            1)  ζ    - [ixj] vorticity field
+
+            2)  x_f  - [1xi] cell widths in x-dim
+            3)  y_f  - [1xj] cell widths in y-dim
+            4)  x_c  - [1xi] midpoint distance in x-dim
+            5)  y_c  - [1xj] midpoint distance in y-dim
+            6)  x_c0 - [1]   first midpoint distance in x-dim
+            7)  y_c0 - [1]   first midpoint distance in y-dim
+            8)  κx   - [1xi] diffusivity in x-dim
+            9)  κy   - [1xj] diffusivity in y-dim
+            10) κx0  - [1]   first diffusivity in x-dim
+            11) κy0  - [1]   first diffusivity in y-dim
+
+            12) NBC     - Type of BC for North (j = jmax)
+            13) nb_val  - [ix1] values along nb
+            14) SBC     - Type of BC for South (j = 1)
+            15) sb_val  - [ix1] values along sb
+            16) EBC     - Type of BC for East  (i = imax)
+            17) eb_val  - [jx1] values along eb
+            18) WBC     - Type of BC for West  (i = 1)
+            19) wb_val  - [jx1] values along wb
+
+            20) ug       - [ixj] Array of initial guess for the value
+            21) tol      - Minimum tolerance for the residual
+            22) max_iter - Maximum number of interations permitted
+
+        Outputs
+            1) ψ     - Streamfunction
+            2) itcnt - iterations to convergence
+            3) r     - residual at each iteration
+    """
+    function invPV_2d(ζ,
+                      x_f,y_f,x_c,y_c,x_c0,y_c0,
+                      κx,κy,κx0,κy0,
+                      NBC,nb_val,SBC,sb_val,EBC,eb_val,WBC,wb_val,
+                      ug,tol,max_iter)
+
+        # Get # of cells along each dimension
+        xmax = size(x_f,2)
+        ymax = size(y_f,2)
+
+        # Create chk_per vector based on BCs
+        # [N, S, E, W]
+        chk_per = zeros(Int,4)
+        if NBC == 3
+            chk_per[1] = 1
+        end
+        if SBC == 3
+            chk_per[2] = 1
+        end
+        if EBC == 3
+            chk_per[3] = 1
+        end
+        if WBC == 3
+            chk_per[4] = 1
+        end
+
+        # Calculate vectors to store coefficients for iteration
+        Cx,Bx = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
+
+        # Modify source term with BCs
+        ζ[1,:]    -= Bx[1,:] # South BC
+        ζ[xmax,:] -= Bx[2,:] # North BC
+        ζ[:,1]    -= By[1,:] # West BC
+        ζ[:,ymax] -= By[2,:] # East BC
+
+        # Use Conjugate Gradient Krylov to solve for the streamfunction
+        ψ,itcnt,r = ocnmod.cgk_2d(Cx,Cy,ζ,ug,chk_per,tol,max_iter)
+
+        return ψ,itcnt,r
+    end
+
+    """
+    -----------------------------------------------------------
+    Quiverplot 2D
+    -----------------------------------------------------------
+        Setup for quiverplot
+
+        Inputs
+
+            1) x = vector: x points
+            2) y = vector:  points
+            3) u = array [i x j]
+            4) v = array [i x j]
+            4  qscale = number value
+
+        Outputs
+            1) ψ     - Streamfunction
+            2) itcnt - iterations to convergence
+            3) r     - residual at each iteration
+    """
+
+
+
+
+
+
+
+
 
 
 # Module End
