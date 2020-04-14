@@ -40,21 +40,19 @@ y_c0      = δy
 
 ## Set Diffusivity Parameter -------------------------------
 # For vorticity
-κx        = ones(Float64,1,xmax) .* 1e-2
+κx        = ones(Float64,1,xmax) .* 1
 κy        = ones(Float64,1,ymax) .* 1
 κx0       = κx[1]
 κy0       = κy[1]
 
-# For streamfunction
+# For streamfunction, set diffusivity to 1
 κxp        = ones(Float64,1,xmax)
 κyp        = ones(Float64,1,ymax)
 κxp0       = κxp[1]
 κyp0       = κyp[1]
 
-
-
 ## Iteration Parameters ------------------------------
-tol       = 1e-9
+tol       = 1e-7
 ω         = 1.6
 printint  = 1e4
 method    = 3
@@ -101,7 +99,7 @@ H  = 1000 #m
 
 # Meridional Wind
 #τy = [ -τ0*cos(2*pi*x/Lx)*(y/y) for x in mx, y in my] # Switch from westward to eastward
-τy = zeros(xmax,ymax)
+# τy = zeros(xmax,ymax)
 # contourf(mx,my,τy',
 #         levels=10,
 #         clabels=true,
@@ -116,119 +114,91 @@ H  = 1000 #m
 # Note: Just repeat the first elemtent for now
 #dτx_dy = ocnmod.ddx_1d(vcat(τx[1],τx),y_f)
 
-# zonal wind stress that is meridionally cosinusoidlal, zonally uniform
-dτx = [ τ0*pi/Ly*sin(pi*y/Ly)*(x/x) for x in mx, y in my]
+# Create Zonal Wind Stress Terms
+xedge = [0:1:xmax+1;]
+yedge = [0:1:ymax+1;]
 
-#
-dτy = τy
-#dτy_dx = ocnmod.ddx_1d(vcat(τy[1],τy),x_f)
+# Case 1: Constal Zonal Wind Only, varying cosinusoidally
+dτx = [ -τ0*cos(2*pi*y/Ly)*(x/x) for x in xedge, y in yedge]
+dτy = [ 0 for x in xedge, y in yedge]
+xi = 5
+yi = 10
+qscale = 1
+pts,uv = ocnmod.quiverprep_2d(xedge,yedge,dτx,dτy,xi,yi,qscale)
+p=contourf(xedge,yedge,dτx')
+p=Plots.quiver!(pts,quiver=(uv),
+    ylims=(0,150),
+    xlims=(0,50),
+    lc="black"
+    )
 
-# Time varying zonal
-dτxdt = zeros(Float64,xmax,ymax,12)
-mult = zeros(Float64,12)
-for m = 1:12
-        #mult[m] = cos(2*m/12*pi);
-        mult[m] = sin(0.5*m/12*pi);
-        dτxdt[:,:,m] = dτx .* mult[m];
 
-end
+# Case 2:
+
 
 
 # Note(what we do above but in list comprehension form)
-dτxdt2 = [ τ0*pi/Ly*sin(pi*y/Ly)*x/x for x in mx, y in my, m in 1:12]
-
-plot(mult)
+#dτxdt2 = [ τ0*pi/Ly*sin(pi*y/Ly)*x/x for x in mx, y in my, m in 1:12]
+#plot(mult)
 
 # Time varying meridional
 #dτydt = zeros(Float64,xmax,ymax,12)
 
 # Automatically generate wind stress profile that varies in all 3
 
-# Case 01: Forcing Maxima that translates southwest
-dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
-dτydt2 = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
+# -----------------------------------
+# Prescribe Wind Stress Curl
+# -----------------------------------
+casen = 2
+
+# Case 01: Forcing Maxima that translates northwest
+if casen == 1
+    curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
+    curlTy = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
+end
+
 
 # Case 02: Cosinusoidal zonal wind, no meriodional
-dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
-dτydt2 = [ 1 for x in mx, y in my, m in 1:12]
-
-# -----------------------
-# Quiver Testing
-# -----------------------
-    dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
-    dτydt2 = [ 1 for x in mx, y in my, m in 1:12]
-
-    dτxdt2= dτxdt2 ./ findmax(abs.(dτxdt2))[1]
-    dτydt2= dτydt2 ./ findmax(abs.(dτydt2))[1]
-
-
-    #Set and restrict to interval
-    xi = 2
-    yi = 10
-    qscale = 2
-    u  = dτxdt2[1:xi:end-1,1:yi:end-1,:]
-    v  = dτydt2[1:xi:end-1,1:yi:end-1,:]
-    xp = mx[1:xi:end-1]; xpm = length(xp)
-    yp = my[1:yi:end-1]; ypm = length(yp)
-    aniquiv = @animate for t ∈ 1:12
-        up = u[:,:,t] .* qscale
-        vp = v[:,:,t] .* qscale
-
-        pts = vec([(xp[i], yp[j]) for i=1:xpm, j=1:ypm])
-        uv = vec([(up[i,j],vp[i,j]) for i=1:xpm, j=1:ypm])
-
-        Plots.quiver(pts,quiver=(uv),
-        title="T = "*string(t),
-        xlims=(0,50),
-        lc="black")
-    end
-    gif(aniquiv,"HW4_Quiverin.gif",fps=2)
-
-    # ----------------
-    # FUNCTIONIZED
-    xi = 2
-    yi = 10
-    qscale = 2
-    aniquiv2 = @animate for t ∈ 1:12
-        u = dτxdt2[:,:,t]
-        v = dτydt2[:,:,t]
-        pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,xi,yi,qscale)
-        Plots.quiver(pts,quiver=(uv),
-        title="T = "*string(t),
-        xlims=(0,50),
-        lc="black")
-    end
-    gif(aniquiv2,"HW4_Quiverin2.gif",fps=2)
-
-
-
-dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
-dτydt2 = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
-dτxdt2= dτxdt2 ./ findmax(abs.(dτxdt2))[1]
-dτydt2= dτydt2 ./ findmax(abs.(dτydt2))[1]
-anim5 = @animate for t ∈ 1:12
-    uv = vec([(dτxdt2[i,j,t], dτxdt2[i,j,t]) for i=1:xmax, j=1:ymax])
-    Plots.quiver(pts[1:100:end],quiver=uv[1:100:end],
-    title="It"*string(t),
-    )
+if casen == 2
+    curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
+    curlTy = [ 0 for x in mx, y in my, m in 1:12]
 end
-gif(anim5,"HW4_Quiverin.gif",fps=2)
 
 
-S = 1/(ρ0*H) * (dτxdt2 + dτydt2)
+# -----------------------------------
+# CALCULATE FORCING TERM
+# -----------------------------------
+    S = 1/(ρ0*H) * (curlTy - curlTx)
 
-anim4 = @animate for t ∈ 1:12
-        contourf(mx,my,S[:,:,t]'/findmax(abs.(S))[1],
-                clabels=true,
-                levels=[-1:0.2:1;],
-                clims =(-1,1),
-                title="Forcing Term at t="*string(t),
-                xlabel="x (meters)",
-                ylabel="y (meters)",
-                fillcolor=:inferno
-                )
-        end
-gif(anim4,"HW4_Forcing_case02.gif",fps=2)
+
+# -----------------------------------
+#  Visualize Forcing Term, Quiver plot on wind curl
+# -----------------------------------
+    casen = 2
+    xi = 2
+    yi = 10
+    qscale = 1e3
+
+    aniquiv2 = @animate for t ∈ 1:12
+        u = curlTx[:,:,t]
+        v = curlTy[:,:,t]
+        pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,xi,yi,qscale)
+        Splot = S[:,:,t] ./ findmax(abs.(S[:,:,t]))[1]
+        a = heatmap(mx,my,Splot',
+#            clims=(-1,1),
+            title="Forcing Term Case "*string(casen)*"; t= "*string(t),
+            seriescolor=:balance,
+            xlabel="x (meters)",
+            ylabel="y (meters)",
+            )
+        a = Plots.quiver!(pts,quiver=(uv),
+            ylims=(0,150),
+            xlims=(0,50),
+            lc="black"
+            )
+    end
+    gif(aniquiv2,"HW4_Forcing_Case"*string(casen)*".gif",fps=2)
+
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
 # West
@@ -277,13 +247,16 @@ sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 
 
 # Preallocate
-u_t = zeros(Float64,xmax,ymax,ts_max)
+vort_t = zeros(Float64,xmax,ymax,ts_max)
 ψ_t = zeros(Float64,xmax,ymax,ts_max)
+ut = zeros(Float64,xmax-2,ymax-2,ts_max)
+vt = zeros(Float64,xmax-2,ymax-2,ts_max)
+
 
 for t = 1:ts_max
 
         if t > 1
-                x_init = u_t[:,:,t-1]
+                x_init = vort_t[:,:,t-1]
         else
                 x_init = zeros(Float64,xmax,ymax)
         end
@@ -323,10 +296,10 @@ for t = 1:ts_max
         Ax,Ay,b = ocnmod.CN_make_matrix_2d(dt,θ,ug,Cx0,Cy0,Cx1,Cy1,S0,S1,1e5,chk_per)
 
         #u_out,itcnt,r,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
-        u_t[:,:,t],itcnt2,r2 = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter)
+        vort_t[:,:,t],itcnt2,r2 = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter)
 
         # Solving for streamfunction (first pass)
-        # S_psi = u_t[:,:,t]
+        # S_psi = vort_t[:,:,t]
         # Cxp,Bxp = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κxp,EBC,eb_val,WBC,wb_val,x_c0,κxp0)
         # Cyp,Byp = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κyp,NBC,nb_val,SBC,sb_val,y_c0,κyp0)
         # S_psi[1,:]    -= Bxp[1,:] # South BC
@@ -335,29 +308,47 @@ for t = 1:ts_max
         # S_psi[:,ymax] -= Byp[2,:] # East BC
         # ψ_t[:,:,t],~,~ = ocnmod.cgk_2d(Cxp,Cyp,S_psi,ug,chk_per,tol,max_iter)
 
-        # Solve for streamfunction (functionized)
-        S_psi = u_t[:,:,t]
+        # Solve for streamfunction, using vorticity as the input (functionized)
+        S_psi = vort_t[:,:,t]
         ψ_t[:,:,t],~,~ =ocnmod.invPV_2d(S_psi,
                           x_f,y_f,x_c,y_c,x_c0,y_c0,
                           κxp,κyp,κxp0,κyp0,
                           NBC,nb_val,SBC,sb_val,EBC,eb_val,WBC,wb_val,
                           ug,tol,max_iter)
+        # Solve for uv
+        ut[:,:,t],vt[:,:,t],~,~=ocnmod.psi2uv(ψ_t[:,:,t],x_f,y_f,mx,my,1)
+
 
 end
 
-
+# ---------------------------------------------------
 # Animate Vorticity (Left) and Streamfunction (Right)
+# ---------------------------------------------------
+# Prepare for animating vorticity and streamfunction
+
+xi = 2
+yi = 10
+qscale = 1e3
+x_u = mx[2:end-1]
+y_v = my[2:end-1]
 anim3 = @animate for t ∈ 1:ts_max
         l = @layout[a b]
-        c = contourf(mx,my,u_t[:,:,t]'/findmax(abs.(u_t))[1],
+
+        # Make quivers
+        u = ut[:,:,t]
+        v = vt[:,:,t]
+        pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,xi,yi,qscale)
+
+        c = contourf(mx,my,vort_t[:,:,t]'/findmax(abs.(vort_t))[1],
                 clabels=true,
                 levels=[-1:0.1:1;],
                 clims=(-1,1),
                 title="Vorticity at t="*string(t),
                 xlabel="x (meters)",
                 ylabel="y (meters)",
-                fillcolor=:inferno
+                fillcolor=:balance
                 )
+
         h = contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
                 clabels=true,
                 levels=[-1:0.1:1;],
@@ -365,27 +356,52 @@ anim3 = @animate for t ∈ 1:ts_max
                 title="Psi at t="*string(t),
                 xlabel="x (meters)",
                 ylabel="y (meters)",
-                fillcolor=:inferno
+                fillcolor=:balance
                 )
+        h = Plots.quiver!(pts,quiver=(uv),
+            ylims=(0,150),
+            xlims=(0,50),
+            lc="black"
+            )
 
         plot(c,h,layout = l)
 end
-gif(anim3,"HW4_vortfirsttest.gif",fps=5)
+gif(anim3,"HW4_Vort_Psi_Case"*string(casen)*".gif",fps=5)
+#
+# anim4 = @animate for t ∈ 1:ts_max
+#         contourf(mx,my,ψ_t[:,:,t]'./findmax(ψ_t)[1],
+#                 clabels=true,
+# #                clims=(-1e-3,1e-3),
+#                 title="Streamfunction at t="*string(t),
+#                 xlabel="x (meters)",
+#                 ylabel="y (meters)",
+#                 levels=10,
+#                 fillcolor=:inferno
+#                 )
+#         end
+# gif(anim4,"HW4_psifirsttest.gif",fps=10)
 
-anim4 = @animate for t ∈ 1:ts_max
-        contourf(mx,my,ψ_t[:,:,t]'./findmax(ψ_t)[1],
-                clabels=true,
-#                clims=(-1e-3,1e-3),
-                title="Streamfunction at t="*string(t),
-                xlabel="x (meters)",
-                ylabel="y (meters)",
-                levels=10,
-                fillcolor=:inferno
-                )
-        end
-gif(anim4,"HW4_psifirsttest.gif",fps=10)
-
-
+xi = 2
+yi = 10
+qscale = 1e3
+aniquiv2 = @animate for t ∈ 1:12
+    u = curlTx[:,:,t]
+    v = curlTy[:,:,t]
+    pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,xi,yi,qscale)
+    a = heatmap(mx,my,Splot[:,:,t]',
+        clims=(-1,1),
+        title="Forcing Term Case "*string(casen)*"; t= "*string(t),
+        seriescolor=:balance,
+        xlabel="x (meters)",
+        ylabel="y (meters)",
+        )
+    a = Plots.quiver!(pts,quiver=(uv),
+        ylims=(0,150),
+        xlims=(0,50),
+        lc="black"
+        )
+end
+gif(aniquiv2,"HW4_Forcing_Case"*string(casen)*".gif",fps=2)
 
 ## F4 - Error Map, EW Periodic, 1e6 iteration
 fig5= contourf(mx,my,u_out',
