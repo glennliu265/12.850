@@ -1260,7 +1260,7 @@ module ocnmod
 
     """
     -----------------------------------------------------------
-    ddx_1d(ϕ,Δx)
+    ddx_1d(ϕ,Δx,method)
     -----------------------------------------------------------
 
         Takes derivative of property ϕ where
@@ -1514,7 +1514,6 @@ module ocnmod
         Outputs
             1) pts      = vector [i*j] of tuples, coordinate pairs
             2) uv       = vector [i*j] of tuples, vector component values
-
     """
     function quiverprep_2d(x,y,u,v,x_sp,y_sp,qscale)
         # Space variables
@@ -1528,6 +1527,115 @@ module ocnmod
         uv = vec([(us[i,j],vs[i,j]) for i=1:xpm, j=1:ypm])
         return pts, uv
     end
+
+    """
+    -----------------------------------------------------------
+    Streamfunction to uv: psi2uv(ψ,Δx,Δy,x,y,dropdim)
+    -----------------------------------------------------------
+    Using the relations:
+        dψ/dx = v
+        dψ/dy = -u
+
+    Recover the velocity and wind field from the input ψ.
+    Use central differencing.
+
+    Dependencies: ddx_1d
+
+    Inputs
+        1) ψ       - streamfuncion [i x j] array
+        2) Δx      - x cell size   [i]
+        3) Δy      - y cell size   [j]
+        4) x       - x coordinates [i]
+        5) y       - y coordinates [j]
+        6) dropdim - boolean, 1= drop outside dimensions for central differencing
+
+
+    """
+    function psi2uv(ψ,Δx,Δy,x,y,dropdim)
+        xmax = length(x)
+        ymax = length(y)
+
+        # Calculate dψ/dx along each row
+        v = zeros(xmax-2,ymax)
+        for j = 1:ymax
+            ψj = ψ[:,j]
+            v[:,j],~,~ = ocnmod.ddx_1d(ψj,Δx,3)
+        end
+
+        # Calculate dψ/dy along each column
+        u = zeros(xmax,ymax-2)
+        for i = 1:xmax
+            ψi = ψ[i,:]
+            u[i,:],~,~ = ddx_1d(ψi,Δy,3)
+        end
+        u *= -1
+
+        # Drop extra dimensions for the match
+        if dropdim == 1
+            u = u[2:end-1,:]
+            v = v[:,2:end-1]
+        end
+        # Do the same to the input grids
+        nx = x[2:end-1]
+        ny = y[2:end-1]
+
+        return u,v,nx,ny
+    end
+
+    """
+    -----------------------------------------------------------
+    ddx_2d()
+    -----------------------------------------------------------
+    Using the relations:
+        dψ/dx = v
+        dψ/dy = -u
+
+    ddx_1d but along a 2D matrix
+
+    Dependencies: ddx_1d
+
+    Inputs
+        1) ψ       - streamfuncion [i x j] array
+        2) Δx      - x cell size   [i]
+        4) x       - x coordinates [i]
+        5) y       - y coordinates [j]
+        6) dim     - 1 = calculate along row (j), 2 = calculate along column (i)
+
+
+    """
+    function ddx_2d(ψ,Δx,x,y,dim)
+        xmax = length(x)
+        ymax = length(y)
+
+        # Calculate dψ/dx, looping along 1st dim (column)
+        if dim == 1
+            u = zeros(xmax-2,ymax)
+
+            for j = 1:ymax
+                ψj = ψ[:,j]
+                u[:,j],~,~ = ocnmod.ddx_1d(ψj,Δx,3)
+            end
+
+            u = u[:,2:end-1]
+            nx = x[2:end-1]
+            ny = y
+        # Calculate dψ/dy, looping along 2nd dim (row)
+        elseif dim == 2
+            u = zeros(xmax,ymax-2)
+            for i = 1:xmax
+                ψi = ψ[i,:]
+                u[i,:],~,~ = ddx_1d(ψi,Δx,3)
+            end
+            u *= -1
+            u = u[2:end-1,:]
+            nx = x
+            ny = y[2:end-1]
+        end
+        return u,nx,ny
+    end
+
+
+
 
 
 

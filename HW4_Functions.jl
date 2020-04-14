@@ -9,8 +9,6 @@ include("AllFunctions12850.jl")
 # X and Y Grids
 xgrid = [0:1:50;]
 ygrid = [0:1:150;]
-# xgrid = [0:.1:2;]
-# ygrid = [0:.1:1;]
 
 # Get Midpoints
 mx      = ocnmod.get_midpoints(xgrid)
@@ -25,7 +23,6 @@ xmax        = length(mx)
 ymax        = length(my)
 Lx          = mx[xmax]
 Ly          = my[ymax]
-
 
 # Get Cell Spacing and Widths (Currently Fixed)
 x_f       = ones(Int8,1,xmax)*δx   # Cell Face Length (x)
@@ -119,8 +116,14 @@ xedge = [0:1:xmax+1;]
 yedge = [0:1:ymax+1;]
 
 # Case 1: Constal Zonal Wind Only, varying cosinusoidally
-dτx = [ -τ0*cos(2*pi*y/Ly)*(x/x) for x in xedge, y in yedge]
+dτx = [ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge]
 dτy = [ 0 for x in xedge, y in yedge]
+
+x_f2       = ones(Int8,1,length(xedge))*δx
+y_f2       = ones(Int8,1,length(yedge))*δx
+Txdy,x1,y1 = ocnmod.ddx_2d(dτx,x_f2,xedge,yedge,1)
+Tydx,x1,y1 = ocnmod.ddx_2d(dτy,y_f2,xedge,yedge,2)
+
 xi = 5
 yi = 10
 qscale = 1
@@ -132,24 +135,20 @@ p=Plots.quiver!(pts,quiver=(uv),
     lc="black"
     )
 
+pts,uv = ocnmod.quiverprep_2d(mx,my,Txdy,Tydx,xi,yi,qscale)
+p=contourf(mx,my,Txdy')
+p=Plots.quiver!(pts,quiver=(uv),
+    ylims=(0,150),
+    xlims=(0,50),
+    lc="black"
+    )
 
-# Case 2:
 
-
-
-# Note(what we do above but in list comprehension form)
-#dτxdt2 = [ τ0*pi/Ly*sin(pi*y/Ly)*x/x for x in mx, y in my, m in 1:12]
-#plot(mult)
-
-# Time varying meridional
-#dτydt = zeros(Float64,xmax,ymax,12)
-
-# Automatically generate wind stress profile that varies in all 3
 
 # -----------------------------------
-# Prescribe Wind Stress Curl
+# Directly Prescribe Wind Stress Curl
 # -----------------------------------
-casen = 2
+casen = 1
 
 # Case 01: Forcing Maxima that translates northwest
 if casen == 1
@@ -328,7 +327,11 @@ end
 
 xi = 2
 yi = 10
-qscale = 1e3
+if casen == 1
+    qscale = 1e3
+elseif casen == 2
+    qscale = 1e6
+end
 x_u = mx[2:end-1]
 y_v = my[2:end-1]
 anim3 = @animate for t ∈ 1:ts_max
@@ -367,6 +370,42 @@ anim3 = @animate for t ∈ 1:ts_max
         plot(c,h,layout = l)
 end
 gif(anim3,"HW4_Vort_Psi_Case"*string(casen)*".gif",fps=5)
+
+
+# -----------------------
+# Psi only Plots
+# -----------------------
+xi = 2
+yi = 10
+if casen == 1
+    qscale = 1e3
+elseif casen == 2
+    qscale = 1e6
+end
+x_u = mx[2:end-1]
+y_v = my[2:end-1]
+anim3 = @animate for t ∈ 1:ts_max
+        # Make quivers
+        u = ut[:,:,t]
+        v = vt[:,:,t]
+        pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,xi,yi,qscale)
+
+        h = contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
+                clabels=true,
+                levels=[-1:0.1:1;],
+                clims=(-1,1),
+                title="Psi at t="*string(t),
+                xlabel="x (meters)",
+                ylabel="y (meters)",
+                fillcolor=:balance
+                )
+        h = Plots.quiver!(pts,quiver=(uv),
+            ylims=(0,150),
+            xlims=(0,50),
+            lc="black"
+            )
+end
+gif(anim3,"HW4_Psionly_Case"*string(casen)*".gif",fps=5)
 #
 # anim4 = @animate for t ∈ 1:ts_max
 #         contourf(mx,my,ψ_t[:,:,t]'./findmax(ψ_t)[1],
