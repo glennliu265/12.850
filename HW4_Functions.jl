@@ -1,9 +1,9 @@
 using Plots
 using Printf
 using LinearAlgebra
+using PyPlot
 
 include("AllFunctions12850.jl")
-
 
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
@@ -40,8 +40,8 @@ y_c0      = δy
 
 ## Set Diffusivity Parameter -------------------------------
 # For vorticity
-κx        = ones(Float64,1,xmax) .* 1e-4
-κy        = ones(Float64,1,ymax) .* 1e-4
+κx        = ones(Float64,1,xmax) .* 1e-2
+κy        = ones(Float64,1,ymax) .* 1
 κx0       = κx[1]
 κy0       = κy[1]
 
@@ -63,7 +63,7 @@ max_iter  = 1e5
 
 ## Time parameters
 dt        = 3600*24*30 #1 * 3600 * 24 * 30     # One Month Resolution
-ts_max    = 36
+ts_max    = 12
 θ         = 0.5
 
 ## Source Term Settings -------------------------------
@@ -73,7 +73,23 @@ H  = 1000 #m
 
 # Set the wind directions
 # Zonal Wind
-τx = [ -τ0*cos(pi*y/Ly)*(x/x) for x in mx, y in my] # Switch from westward to eastward
+
+# ------------------------------------------------------------
+# Testing different approximation schemes for first derivative
+# ------------------------------------------------------------
+    # τx = [ -τ0*cos(pi*y/Ly) for y in my]
+    # τxy = [ τ0*pi/Ly*sin(pi*y/Ly) for y in my]
+    # a1,b1,c=ocnmod.ddx_1d(τx,y_f,1)
+    # a2,b2,c=ocnmod.ddx_1d(τx,y_f,2)
+    # a3,b3,c=ocnmod.ddx_1d(τx,y_f,3)
+    # plot(b1,a1,label="Fw")
+    # plot!(b2,a2,label="Bw")
+    # plot!(b3,a3,label="Cen")
+    # plot!(τxy,label="Ana")
+    # It seems that the 3rd method works the best (but lose the ends)
+
+
+ # Switch from westward to eastward
 # contourf(mx,my,τx',
 #         levels=10,
 #         clabels=true,
@@ -99,9 +115,11 @@ H  = 1000 #m
 # Approximate the x and y derivatives of the wind directions
 # Note: Just repeat the first elemtent for now
 #dτx_dy = ocnmod.ddx_1d(vcat(τx[1],τx),y_f)
+
+# zonal wind stress that is meridionally cosinusoidlal, zonally uniform
 dτx = [ τ0*pi/Ly*sin(pi*y/Ly)*(x/x) for x in mx, y in my]
 
-#τ0*pi/Ly .* sin.( pi .* my ./ Ly)
+#
 dτy = τy
 #dτy_dx = ocnmod.ddx_1d(vcat(τy[1],τy),x_f)
 
@@ -109,17 +127,88 @@ dτy = τy
 dτxdt = zeros(Float64,xmax,ymax,12)
 mult = zeros(Float64,12)
 for m = 1:12
-        mult[m] = cos(2*m/12*pi);
+        #mult[m] = cos(2*m/12*pi);
+        mult[m] = sin(0.5*m/12*pi);
         dτxdt[:,:,m] = dτx .* mult[m];
+
 end
-# plot(mult)
+
+
+# Note(what we do above but in list comprehension form)
+dτxdt2 = [ τ0*pi/Ly*sin(pi*y/Ly)*x/x for x in mx, y in my, m in 1:12]
+
+plot(mult)
 
 # Time varying meridional
-dτydt = zeros(Float64,xmax,ymax,12)
+#dτydt = zeros(Float64,xmax,ymax,12)
+
+# Automatically generate wind stress profile that varies in all 3
+
+# Case 01: Forcing Maxima that translates southwest
+dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
+dτydt2 = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
+
+# Case 02: Cosinusoidal zonal wind, no meriodional
+dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
+dτydt2 = [ 1 for x in mx, y in my, m in 1:12]
+
+# -----------------------
+# Quiver Testing
+# -----------------------
+    dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
+    dτydt2 = [ 1 for x in mx, y in my, m in 1:12]
+
+    dτxdt2= dτxdt2 ./ findmax(abs.(dτxdt2))[1]
+    dτydt2= dτydt2 ./ findmax(abs.(dτydt2))[1]
 
 
-S = 1/(ρ0*H) * (dτxdt + dτydt)
+    #Set and restrict to interval
+    xi = 2
+    yi = 10
+    u  = dτxdt2[1:xi:end-1,1:yi:end-1,:]
+    v  = dτydt2[1:xi:end-1,1:yi:end-1,:]
+    xp = mx[1:xi:end-1]; xpm = length(xp)
+    yp = my[1:yi:end-1]; ypm = length(yp)
+    aniquiv = @animate for t ∈ 1:12
+        up = u[:,:,t] ./ findmax(abs.(u[:,:,t]))[1]
+        vp = v[:,:,t] ./ findmax(abs.(v[:,:,t]))[1]
+        pts = vec([(xp[i], yp[j]) for i=1:xpm, j=1:ypm])
+        uv = vec([(up[i,j],vp[i,j]) for i=1:xpm, j=1:ypm])
+        Plots.quiver(pts,quiver=(uv),
+        title="T = "*string(t),
+        arrow=Plots.arrow(0.5,0.5))
+    end
+    gif(aniquiv,"HW4_Quiverin.gif",fps=2)
 
+
+
+dτxdt2 = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
+dτydt2 = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
+dτxdt2= dτxdt2 ./ findmax(abs.(dτxdt2))[1]
+dτydt2= dτydt2 ./ findmax(abs.(dτydt2))[1]
+anim5 = @animate for t ∈ 1:12
+    uv = vec([(dτxdt2[i,j,t], dτxdt2[i,j,t]) for i=1:xmax, j=1:ymax])
+    Plots.quiver(pts[1:100:end],quiver=uv[1:100:end],
+    title="It"*string(t),
+    )
+end
+gif(anim5,"HW4_Quiverin.gif",fps=2)
+
+
+S = 1/(ρ0*H) * (dτxdt2 + dτydt2)
+
+anim4 = @animate for t ∈ 1:12
+        contourf(mx,my,S[:,:,t]'/findmax(abs.(S))[1],
+                clabels=true,
+                levels=[-1:0.2:1;],
+                clims =(-1,1),
+                title="Forcing Term at t="*string(t),
+                xlabel="x (meters)",
+                ylabel="y (meters)",
+                fillcolor=:inferno
+                )
+        end
+gif(anim4,"HW4_Forcing_case02.gif",fps=2)
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
 # West
@@ -216,32 +305,52 @@ for t = 1:ts_max
         #u_out,itcnt,r,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
         u_t[:,:,t],itcnt2,r2 = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter)
 
-        # Solving for streamfunction
+        # Solving for streamfunction (first pass)
+        # S_psi = u_t[:,:,t]
+        # Cxp,Bxp = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κxp,EBC,eb_val,WBC,wb_val,x_c0,κxp0)
+        # Cyp,Byp = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κyp,NBC,nb_val,SBC,sb_val,y_c0,κyp0)
+        # S_psi[1,:]    -= Bxp[1,:] # South BC
+        # S_psi[xmax,:] -= Bxp[2,:] # North BC
+        # S_psi[:,1]    -= Byp[1,:] # West BC
+        # S_psi[:,ymax] -= Byp[2,:] # East BC
+        # ψ_t[:,:,t],~,~ = ocnmod.cgk_2d(Cxp,Cyp,S_psi,ug,chk_per,tol,max_iter)
+
+        # Solve for streamfunction (functionized)
         S_psi = u_t[:,:,t]
-        Cxp,Bxp = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
-        Cyp,Byp = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
-        S_psi[1,:]    -= Bxp[1,:] # South BC
-        S_psi[xmax,:] -= Bxp[2,:] # North BC
-        S_psi[:,1]    -= Byp[1,:] # West BC
-        S_psi[:,ymax] -= Byp[2,:] # East BC
-        ψ_t[:,:,t],~,~ = ocnmod.cgk_2d(Cxp,Cyp,S_psi,ug,chk_per,tol,max_iter)
-        # Solve for streamfunction
+        ψ_t[:,:,t],~,~ =ocnmod.invPV_2d(S_psi,
+                          x_f,y_f,x_c,y_c,x_c0,y_c0,
+                          κxp,κyp,κxp0,κyp0,
+                          NBC,nb_val,SBC,sb_val,EBC,eb_val,WBC,wb_val,
+                          ug,tol,max_iter)
 
 end
 
 
+# Animate Vorticity (Left) and Streamfunction (Right)
 anim3 = @animate for t ∈ 1:ts_max
-        contourf(mx,my,u_t[:,:,t]',
+        l = @layout[a b]
+        c = contourf(mx,my,u_t[:,:,t]'/findmax(abs.(u_t))[1],
                 clabels=true,
-                clims=(-1e-3,1e-3),
+                levels=[-1:0.1:1;],
+                clims=(-1,1),
                 title="Vorticity at t="*string(t),
                 xlabel="x (meters)",
                 ylabel="y (meters)",
-                levels=10,
                 fillcolor=:inferno
                 )
-        end
-gif(anim3,"HW4_vortfirsttest.gif",fps=10)
+        h = contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
+                clabels=true,
+                levels=[-1:0.1:1;],
+                clims=(-1,1),
+                title="Psi at t="*string(t),
+                xlabel="x (meters)",
+                ylabel="y (meters)",
+                fillcolor=:inferno
+                )
+
+        plot(c,h,layout = l)
+end
+gif(anim3,"HW4_vortfirsttest.gif",fps=5)
 
 anim4 = @animate for t ∈ 1:ts_max
         contourf(mx,my,ψ_t[:,:,t]'./findmax(ψ_t)[1],
