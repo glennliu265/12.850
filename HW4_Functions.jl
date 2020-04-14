@@ -121,8 +121,9 @@ dτy = [ 0 for x in xedge, y in yedge]
 
 x_f2       = ones(Int8,1,length(xedge))*δx
 y_f2       = ones(Int8,1,length(yedge))*δx
-Txdy,x1,y1 = ocnmod.ddx_2d(dτx,x_f2,xedge,yedge,1)
-Tydx,x1,y1 = ocnmod.ddx_2d(dτy,y_f2,xedge,yedge,2)
+# Take x along y
+Txdy,x1,y1 = ocnmod.ddx_2d(dτx,y_f2,xedge,yedge,2)
+Tydx,x1,y1 = ocnmod.ddx_2d(dτy,x_f2,xedge,yedge,1)
 
 xi = 5
 yi = 10
@@ -136,7 +137,7 @@ p=Plots.quiver!(pts,quiver=(uv),
     )
 
 pts,uv = ocnmod.quiverprep_2d(mx,my,Txdy,Tydx,xi,yi,qscale)
-p=contourf(mx,my,Txdy')
+p=contourf(mx,my,Txdy',seriescolor=:balance)
 p=Plots.quiver!(pts,quiver=(uv),
     ylims=(0,150),
     xlims=(0,50),
@@ -148,7 +149,7 @@ p=Plots.quiver!(pts,quiver=(uv),
 # -----------------------------------
 # Directly Prescribe Wind Stress Curl
 # -----------------------------------
-casen = 1
+casen = 2
 
 # Case 01: Forcing Maxima that translates northwest
 if casen == 1
@@ -159,10 +160,11 @@ end
 
 # Case 02: Cosinusoidal zonal wind, no meriodional
 if casen == 2
-    curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
+    curlTx = [ τ0*pi/Ly*sin(2*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
     curlTy = [ 0 for x in mx, y in my, m in 1:12]
 end
 
+contourf(mx,my,curlTx[:,:,1]'/findmax(abs.(curlTx))[1],seriescolor=:balance,clims=(-1,1))
 
 # -----------------------------------
 # CALCULATE FORCING TERM
@@ -173,7 +175,6 @@ end
 # -----------------------------------
 #  Visualize Forcing Term, Quiver plot on wind curl
 # -----------------------------------
-    casen = 2
     xi = 2
     yi = 10
     qscale = 1e3

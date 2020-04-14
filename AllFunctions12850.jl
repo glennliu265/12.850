@@ -1607,13 +1607,12 @@ module ocnmod
         xmax = length(x)
         ymax = length(y)
 
-        # Calculate dψ/dx, looping along 1st dim (column)
+        # Calculate dψ/dx, looping for each j
         if dim == 1
             u = zeros(xmax-2,ymax)
-
             for j = 1:ymax
-                ψj = ψ[:,j]
-                u[:,j],~,~ = ocnmod.ddx_1d(ψj,Δx,3)
+                ψj = ψ[:,j]'
+                u[:,j],b,c = ocnmod.ddx_1d(ψj,Δx,3)
             end
 
             u = u[:,2:end-1]
@@ -1623,7 +1622,7 @@ module ocnmod
         elseif dim == 2
             u = zeros(xmax,ymax-2)
             for i = 1:xmax
-                ψi = ψ[i,:]
+                ψi = ψ[i,:]'
                 u[i,:],~,~ = ddx_1d(ψi,Δx,3)
             end
             u *= -1
