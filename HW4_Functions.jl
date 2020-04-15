@@ -51,7 +51,7 @@ y_c0      = δy
 ## Iteration Parameters ------------------------------
 tol       = 1e-7
 ω         = 1.6
-printint  = 1e4
+printint  = 1e3
 method    = 3
 save_iter = 1000
 max_iter  = 1e5
@@ -106,7 +106,7 @@ H  = 1000 #m
 # include("AllFunctions12850.jl")
 #dτx_dy = ocnmod.ddx_1d(τx,y_f)
 
-
+casen = 1
 # Approximate the x and y derivatives of the wind directions
 # Note: Just repeat the first elemtent for now
 #dτx_dy = ocnmod.ddx_1d(vcat(τx[1],τx),y_f)
@@ -116,55 +116,79 @@ xedge = [0:1:xmax+1;]
 yedge = [0:1:ymax+1;]
 
 # Case 1: Constal Zonal Wind Only, varying cosinusoidally
-dτx = [ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge]
-dτy = [ 0 for x in xedge, y in yedge]
+# Seasonal fluctuation of magnitude with time
+if casen ==1
+    dτx = [ -τ0*cos(2*pi*y/Ly)*sin(0.5*m/12*pi) for x in xedge, y in yedge, m in 1:12]
+    dτy = [ 0 for x in xedge, y in yedge, m in 1:12]
+end
+
+# Case 2: Translating
+if casen == 2
+    dτx = [ -τ0*cos(2*pi*y/Ly+m/6) for x in xedge, y in yedge, m in 1:12]
+    dτy = [ -τ0*cos(2*pi*x/Lx+m/6) for x in xedge, y in yedge, m in 1:12]
+end
 
 x_f2       = ones(Int8,1,length(xedge))*δx
 y_f2       = ones(Int8,1,length(yedge))*δx
+curlTx     = zeros(Float64,xmax,ymax,12)
+curlTy     = zeros(Float64,xmax,ymax,12)
 # Take x along y
-Txdy,x1,y1 = ocnmod.ddx_2d(dτx,y_f2,xedge,yedge,2)
-Tydx,x1,y1 = ocnmod.ddx_2d(dτy,x_f2,xedge,yedge,1)
+for m = 1:12
+    curlTx[:,:,m],x1,y1 = ocnmod.ddx_2d(dτx[:,:,m],y_f2,xedge,yedge,2)
+    curlTy[:,:,m],x1,y1 = ocnmod.ddx_2d(dτy[:,:,m],x_f2,xedge,yedge,1)
+end
 
-xi = 5
-yi = 10
-qscale = 1
-pts,uv = ocnmod.quiverprep_2d(xedge,yedge,dτx,dτy,xi,yi,qscale)
-p=contourf(xedge,yedge,dτx')
-p=Plots.quiver!(pts,quiver=(uv),
-    ylims=(0,150),
-    xlims=(0,50),
-    lc="black"
-    )
+# ---------------------------------------------------------------------
+# Plot Wind Stress Animations
+# ---------------------------------------------------------------------
+    xi = 5
+    yi = 10
+    aniwind = @animate for t ∈ 1:12
+        l = @layout[a b]
+        # Plot Wind Stress
+        qscale = 1e2
+        wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],xi,yi,qscale)
+        pws=contourf(xedge,yedge,dτx[:,:,t]',seriescolor=:balance)
+        pws=Plots.quiver!(wspts,quiver=(wsuv),
+            title="Zonal Wind Stress @ t="*string(t),
+            ylims=(0,150),
+            xlims=(0,50),
+            lc="black",
+            )
 
-pts,uv = ocnmod.quiverprep_2d(mx,my,Txdy,Tydx,xi,yi,qscale)
-p=contourf(mx,my,Txdy',seriescolor=:balance)
-p=Plots.quiver!(pts,quiver=(uv),
-    ylims=(0,150),
-    xlims=(0,50),
-    lc="black"
-    )
+        # Plot Wind Stress Curl
+        qscale = 1e3
+        wcpts,wcuv = ocnmod.quiverprep_2d(mx,my,curlTx[:,:,t],curlTy[:,:,t],xi,yi,qscale)
+        pwc=contourf(mx,my,curlTy[:,:,t]'-curlTx[:,:,t]',seriescolor=:balance)
+        pwc=Plots.quiver!(wcpts,quiver=(wcuv),
+            title = "Wind Stress Curl @ t="*string(t),
+            ylims=(0,150),
+            xlims=(0,50),
+            lc="black"
+            )
+        plot(pws,pwc,layout=l)
+    end
+    gif(aniwind,"HW4_WindStress_Case"*string(casen)*".gif",fps=2)
 
-
-
-# -----------------------------------
+# ---------------------------------------------------------------------
 # Directly Prescribe Wind Stress Curl
-# -----------------------------------
-casen = 2
-
-# Case 01: Forcing Maxima that translates northwest
-if casen == 1
-    curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
-    curlTy = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
-end
+# ---------------------------------------------------------------------
 
 
-# Case 02: Cosinusoidal zonal wind, no meriodional
-if casen == 2
-    curlTx = [ τ0*pi/Ly*sin(2*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
-    curlTy = [ 0 for x in mx, y in my, m in 1:12]
-end
+# #Case 01: Forcing Maxima that translates northwest
+# if casen == 1
+#     curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
+#     curlTy = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
+# end
+#
+#
+# # Case 02: Cosinusoidal zonal wind, no meriodional
+# if casen == 2
+#     curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
+#     curlTy = [ 0 for x in mx, y in my, m in 1:12]
+# end
 
-contourf(mx,my,curlTx[:,:,1]'/findmax(abs.(curlTx))[1],seriescolor=:balance,clims=(-1,1))
+#contourf(mx,my,curlTx[:,:,1]'/findmax(abs.(curlTx))[1],seriescolor=:balance,clims=(-1,1))
 
 # -----------------------------------
 # CALCULATE FORCING TERM
@@ -177,7 +201,7 @@ contourf(mx,my,curlTx[:,:,1]'/findmax(abs.(curlTx))[1],seriescolor=:balance,clim
 # -----------------------------------
     xi = 2
     yi = 10
-    qscale = 1e3
+    qscale = 5e2
 
     aniquiv2 = @animate for t ∈ 1:12
         u = curlTx[:,:,t]
@@ -329,9 +353,9 @@ end
 xi = 2
 yi = 10
 if casen == 1
-    qscale = 1e3
+    qscale = 5e5
 elseif casen == 2
-    qscale = 1e6
+    qscale = 1e3
 end
 x_u = mx[2:end-1]
 y_v = my[2:end-1]

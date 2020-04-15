@@ -1625,7 +1625,6 @@ module ocnmod
                 ψi = ψ[i,:]'
                 u[i,:],~,~ = ddx_1d(ψi,Δx,3)
             end
-            u *= -1
             u = u[2:end-1,:]
             nx = x
             ny = y[2:end-1]
