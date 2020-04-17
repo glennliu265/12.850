@@ -57,8 +57,13 @@ save_iter = 1000
 max_iter  = 1e5
 
 ## Time parameters
-dt        = 3600*24*30 #1 * 3600 * 24 * 30     # One Month Resolution
-ts_max    = 12
+dt        = 3600*24*30     # Timestep for model integration
+ts_max    = 40          # Number of timesteps to take
+tottime   = ts_max*dt   # Total time elapsed in seconds
+fdt       = 3600*24*30  # Time Resolution of forcing (seconds)
+ft_max    = convert(Int32,ceil(tottime/fdt)) #
+
+
 θ         = 0.5
 
 ## Source Term Settings -------------------------------
@@ -367,6 +372,9 @@ y_v = my[2:end-1]
 anim3 = @animate for t ∈ 1:ts_max
         l = @layout[a b]
 
+        # Prepare wind stress quicvers
+        wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
+
         # Make quivers
         u = ut[:,:,t]
         v = vt[:,:,t]
@@ -381,6 +389,11 @@ anim3 = @animate for t ∈ 1:ts_max
                 ylabel="y (meters)",
                 fillcolor=:balance
                 )
+        c=Plots.quiver!(wspts,quiver=(wsuv),
+            ylims=(0,Ly),
+            xlims=(0,Lx),
+            lc="black",
+            )
 
         h = Plots.contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
                 clabels=true,
