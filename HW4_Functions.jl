@@ -7,8 +7,8 @@ include("AllFunctions12850.jl")
 
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
-xgrid = [0:1:50;]
-ygrid = [0:1:150;]
+xgrid = [0:100:5000;]
+ygrid = [0:100:10000;]
 
 # Get Midpoints
 mx      = ocnmod.get_midpoints(xgrid)
@@ -112,20 +112,28 @@ casen = 1
 #dτx_dy = ocnmod.ddx_1d(vcat(τx[1],τx),y_f)
 
 # Create Zonal Wind Stress Terms
-xedge = [0:1:xmax+1;]
-yedge = [0:1:ymax+1;]
+xedge = [0:δx:(Lx+2δx);]
+yedge = [0:δy:(Ly+2δy);]
 
-# Case 1: Constal Zonal Wind Only, varying cosinusoidally
+# Case 1: Constant Zonal Wind Only, varying cosinusoidally
 # Seasonal fluctuation of magnitude with time
 if casen ==1
     dτx = [ -τ0*cos(2*pi*y/Ly)*sin(0.5*m/12*pi) for x in xedge, y in yedge, m in 1:12]
     dτy = [ 0 for x in xedge, y in yedge, m in 1:12]
 end
 
-# Case 2: Translating
+# Case 2: Vortex Translation
 if casen == 2
     dτx = [ -τ0*cos(2*pi*y/Ly+m/6) for x in xedge, y in yedge, m in 1:12]
     dτy = [ -τ0*cos(2*pi*x/Lx+m/6) for x in xedge, y in yedge, m in 1:12]
+end
+
+# Case 3: Meridional Component (v sinusoidal with x) which weakens with time
+if casen == 3
+    dτx = [ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge, m in 1:12]
+    dτy = [ -τ0*cos(2*pi*x/Lx) * sin(pi*y/Ly) for x in xedge, y in yedge, m in 1:12]
+    #maskout = findall(x->(x<50 || x > 100),my)
+    #dτy[:,maskout,:] .= 0
 end
 
 x_f2       = ones(Int8,1,length(xedge))*δx
@@ -141,39 +149,36 @@ end
 # ---------------------------------------------------------------------
 # Plot Wind Stress Animations
 # ---------------------------------------------------------------------
-    xi = 5
-    yi = 10
     aniwind = @animate for t ∈ 1:12
         l = @layout[a b]
         # Plot Wind Stress
         qscale = 1e2
-        wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],xi,yi,qscale)
-        pws=contourf(xedge,yedge,dτx[:,:,t]',seriescolor=:balance)
+        wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
+        pws=Plots.contourf(xedge,yedge,dτx[:,:,t]',seriescolor=:balance)
         pws=Plots.quiver!(wspts,quiver=(wsuv),
             title="Zonal Wind Stress @ t="*string(t),
-            ylims=(0,150),
-            xlims=(0,50),
+            ylims=(0,Ly),
+            xlims=(0,Lx),
             lc="black",
             )
 
         # Plot Wind Stress Curl
         qscale = 1e3
-        wcpts,wcuv = ocnmod.quiverprep_2d(mx,my,curlTx[:,:,t],curlTy[:,:,t],xi,yi,qscale)
-        pwc=contourf(mx,my,curlTy[:,:,t]'-curlTx[:,:,t]',seriescolor=:balance)
+        wcpts,wcuv = ocnmod.quiverprep_2d(mx,my,curlTx[:,:,t],curlTy[:,:,t],qscale)
+        pwc=Plots.contourf(mx,my,curlTy[:,:,t]'-curlTx[:,:,t]',seriescolor=:balance)
         pwc=Plots.quiver!(wcpts,quiver=(wcuv),
             title = "Wind Stress Curl @ t="*string(t),
-            ylims=(0,150),
-            xlims=(0,50),
+            ylims=(0,Ly),
+            xlims=(0,Lx),
             lc="black"
             )
-        plot(pws,pwc,layout=l)
+        Plots.plot(pws,pwc,layout=l)
     end
     gif(aniwind,"HW4_WindStress_Case"*string(casen)*".gif",fps=2)
 
 # ---------------------------------------------------------------------
 # Directly Prescribe Wind Stress Curl
 # ---------------------------------------------------------------------
-
 
 # #Case 01: Forcing Maxima that translates northwest
 # if casen == 1
@@ -206,7 +211,7 @@ end
     aniquiv2 = @animate for t ∈ 1:12
         u = curlTx[:,:,t]
         v = curlTy[:,:,t]
-        pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,xi,yi,qscale)
+        pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
         Splot = S[:,:,t] ./ findmax(abs.(S[:,:,t]))[1]
         a = heatmap(mx,my,Splot',
 #            clims=(-1,1),
@@ -276,7 +281,7 @@ vort_t = zeros(Float64,xmax,ymax,ts_max)
 ut = zeros(Float64,xmax-2,ymax-2,ts_max)
 vt = zeros(Float64,xmax-2,ymax-2,ts_max)
 
-
+allstart=time()
 for t = 1:ts_max
 
         if t > 1
@@ -344,16 +349,16 @@ for t = 1:ts_max
 
 
 end
+elapsed = time() - allstart
+fprintf('Completed calculations in %s',elapsed)
 
 # ---------------------------------------------------
 # Animate Vorticity (Left) and Streamfunction (Right)
 # ---------------------------------------------------
 # Prepare for animating vorticity and streamfunction
 
-xi = 2
-yi = 10
 if casen == 1
-    qscale = 5e5
+    qscale = 1e3
 elseif casen == 2
     qscale = 1e3
 end
@@ -365,9 +370,9 @@ anim3 = @animate for t ∈ 1:ts_max
         # Make quivers
         u = ut[:,:,t]
         v = vt[:,:,t]
-        pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,xi,yi,qscale)
+        pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,qscale)
 
-        c = contourf(mx,my,vort_t[:,:,t]'/findmax(abs.(vort_t))[1],
+        c = Plots.contourf(mx,my,vort_t[:,:,t]'/findmax(abs.(vort_t))[1],
                 clabels=true,
                 levels=[-1:0.1:1;],
                 clims=(-1,1),
@@ -377,7 +382,7 @@ anim3 = @animate for t ∈ 1:ts_max
                 fillcolor=:balance
                 )
 
-        h = contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
+        h = Plots.contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
                 clabels=true,
                 levels=[-1:0.1:1;],
                 clims=(-1,1),
@@ -387,12 +392,12 @@ anim3 = @animate for t ∈ 1:ts_max
                 fillcolor=:balance
                 )
         h = Plots.quiver!(pts,quiver=(uv),
-            ylims=(0,150),
-            xlims=(0,50),
+            ylims=(0,Ly),
+            xlims=(0,Lx),
             lc="black"
             )
 
-        plot(c,h,layout = l)
+        Plots.plot(c,h,layout = l)
 end
 gif(anim3,"HW4_Vort_Psi_Case"*string(casen)*".gif",fps=5)
 
@@ -403,7 +408,7 @@ gif(anim3,"HW4_Vort_Psi_Case"*string(casen)*".gif",fps=5)
 xi = 2
 yi = 10
 if casen == 1
-    qscale = 1e3
+    qscale = 1e1
 elseif casen == 2
     qscale = 1e6
 end
@@ -413,7 +418,7 @@ anim3 = @animate for t ∈ 1:ts_max
         # Make quivers
         u = ut[:,:,t]
         v = vt[:,:,t]
-        pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,xi,yi,qscale)
+        pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,qscale)
 
         h = contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
                 clabels=true,
@@ -445,13 +450,11 @@ gif(anim3,"HW4_Psionly_Case"*string(casen)*".gif",fps=5)
 #         end
 # gif(anim4,"HW4_psifirsttest.gif",fps=10)
 
-xi = 2
-yi = 10
 qscale = 1e3
 aniquiv2 = @animate for t ∈ 1:12
     u = curlTx[:,:,t]
     v = curlTy[:,:,t]
-    pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,xi,yi,qscale)
+    pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
     a = heatmap(mx,my,Splot[:,:,t]',
         clims=(-1,1),
         title="Forcing Term Case "*string(casen)*"; t= "*string(t),
@@ -555,219 +558,16 @@ gif(anim2,"HW3_Err.gif",fps=10)
 
 anim3 = @animate for i ∈ 1:save_iter
         l = @layout[a b]
-        c = contourf(mx,my,u_scrap[i,:,:]',
+        c = Plots.contourf(mx,my,u_scrap[i,:,:]',
                 title="Streamfunction: Iteration "*string(i),
                 clabels=true,
                 levels=20,
                 fillcolor=:balance,
                 )
-        h = heatmap(mx,my,abs.(err_scrap[i,:,:]'),
+        h = Plots.heatmap(mx,my,abs.(err_scrap[i,:,:]'),
                 title="Error: Iteration "*string(i),
                 )
         plot(c,h,layout = l)
 
 end
 gif(anim3,"HW3_Together_sinusoidal_vert.gif",fps=10)
-
-# # Plot Outside (Since BCs are wonky)
-# contourf(mx[2:end-1],my,u_out[2:end-1,:])
-# contourf(mx[2:end-1],my,u_out[2:end-1,:],
-#         xlims=(1, 5),
-#         ylims=(1, 5),
-#         )
-
-# For Small Grids
-# Currently it seems that z must by (y,x)
-# heatmap(mx,my,u_out)
-# heatmap(mx[2:end-1],my,u_out[:,2:end-1])
-#
-#
-# xgr= mx[2:end-1]
-# ygr= my
-# ugr = u_out[2:end-1,:]
-# heatmap(ygr,xgr,ugr)
-
-
-## Fig 1 (ζ=10, No flow)
-# fig1 = contourf(mx,my,u_out',
-#         clabels=true,
-#         title="Psi (No Flow N/S/E/W; Vorticity=10), It#"*string(itcnt),
-#         xlabel="x (meters)",
-#         ylabel="y (meters)",
-#         levels=10,
-#         fillcolor=:inferno
-#         )
-# savefig(fig1,"HW3_NoFlow_ConstVort.svg")
-
-
-## Fig 2 (ζ=10, No flow N/S Periodic E/W)
-# fig2= contourf(mx,my,u_out',
-#         clabels=true,
-#         title="Psi (No Flow N/S Periodic E/W; Vorticity=10), It#"*string(itcnt),
-#         xlabel="x (meters)",
-#         ylabel="y (meters)",
-#         levels=10,
-#         fillcolor=:inferno
-#         )
-# savefig(fig2,"HW3_NoFlowNS_PerEW_ConstVort.svg")
-
-## Periodic Convergence Test
-# pct = plot(r2,
-#     label = "N/S Periodic",
-#     title = "Iterations to Convergence for Different BCs",
-#     xlabel="Iterations to Convergence",
-#     ylabel="Residual"
-#     )
-# pct = plot!(r3,
-#     label = "E/W Periodic"
-#     )
-# savefig(pct, "PeriodicConvergence.svg")
-
-## Convergence Test
-# par = [0.5:.1:1.9;]
-# itall = zeros(Float64,length(par))
-# for i = 1:length(par)
-#         ω = par[i]
-#         method = 3
-#         ~,itall[i],~,~, = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,1e5,save_iter)
-# end
-#
-# ct = plot(par,itall,
-#     title="SOR Convergence Test",
-#     xlabel="Omega",
-#     xlim = (0.5,2),
-#     ylabel="Iterations to Convergence",
-#     labels="Iterations",
-#     legend=:topleft,
-#     linewidth=2.5
-#     )
-# savefig(ct,"HW3_SORConvergence.svg")
-
-## Fig4: Sinusoidal Vorticity, No Flow N/S/E/W
-# f4 = plot(
-#         contourf(mx,my,ζ',
-#                 title="Vorticity",
-#                 fillcolor=:blues,
-#                 clabels=true,
-# #                xlabel="x (meters)",
-# #                ylabel="y (meters)",
-#                 levels=10,
-#                 clims=(0.25,2),
-#                 ),
-#         contourf(mx,my,u_out',
-#                 clabels=true,
-#                 seriescolor=:black,
-#                 title="Psi (No Flow N/S/E/W ), It#"*string(itcnt),
-# #                xlabel="x (meters)",
-# #                ylabel="y (meters)",
-#                 levels=10,
-#                 fillcolor=:inferno,
-#                 )
-#         )
-# savefig(f4,"HW3_sinVort_NoFlowNSEW.svg")
-
-##
-
-##F2 - Plot Convergence Error
-# l = @layout[a; b]
-#
-# p1 = plot(r_1,
-#         xaxis = :log,
-# #        title="Convergence Speed for Iterative Methods",
-#         title="No Flow N-S-E-W",
-#         xlabel="Iterations to Convergence",
-#         ylabel="Residual",
-#         lw = 2.5,
-#         label="Jacobi",
-#         )
-# p1 = plot!(r_2,
-#         lw = 2.5,
-#         label="Gauss-Seidel",
-#         )
-# p1 = plot!(r_3,
-#         lw = 2.5,
-#         label="SOR, w = 1.6",
-#         )
-#
-# p2 = plot(pb_1,
-#         xaxis = :log,
-# #        title="Convergence Speed for Iterative Methods",
-#         title="Periodic E-W, No Flow N-S",
-#         xlabel="Iterations to Convergence",
-#         ylabel="Residual",
-#         lw = 2.5,
-#         label="Jacobi",
-#         )
-# p2 = plot!(pb_2,
-#         lw = 2.5,
-#         label="Gauss-Seidel",
-#         )
-# p2 = plot!(pb_3,
-#         lw = 2.5,
-#         label="SOR, w = 1.6",
-#         )
-# pce = plot(p1,p2,layout = l)
-# savefig(pce,"HW3_ItMethConv2.svg")
-
-##F3 - Non convergence plots, last 100 iterations
-# l = @layout[a; b; c]
-# p1 = plot(r_3[end-100:end],
-#         title="SOR, No Flow EW, 3961 Iterations",
-#         lw = 2.5,
-# #        label="SOR, No Flow EW",
-#         legend=:none
-#         )
-# p2 = plot(pb_3[end-100:end],
-#         lw = 2.5,
-#         title="SOR, Periodic EW, 1e5 Iterations",
-#         ylabel="Residual",
-#         legend=:none
-#         )
-# p3 = plot(rmil[end-100:end],
-#         lw = 2.5,
-#         title="SOR, Periodic EW, 1e6 Iterations",
-#         legend=:none,
-#         xlabel="Last N Iterations",
-#         )
-# pcnum = plot(p1,p2,p3,layout = l)
-# savefig(pcnum,"HW_Last_Iterations.svg")
-
-
-## Non Convergence, Periodic Direction
-
-p1 = plot(r_EW,
-        label="EW-Periodic R="*string(r_EW[end]),
-        xlabel="Iterations",
-        ylabel="Residual",
-        title="SOR Convergence Rate for Different BCs",
-        xaxis=:log,
-        lw=2.5
-        )
-p1 = plot!(r_NS,
-        label="NS-Periodic R="*string(r_NS[end]),
-        lw=2.5)
-p1 = plot!(r_nf,
-        label="All-No Flow R="*string(r_nf[end]),
-        ls=:dot,
-        lw=2.5)
-p1 = plot!(r_ap,
-        label="All-Periodic R="*string(r_ap[end]),
-        ls=:dash,
-        lw=2.5)
-savefig(p1,"HW3_F4_DiffBCsConvergence.svg")
-
-## F4 - Error Map, EW Periodic, 1e6 iteration
-
-
-fig4= heatmap(mx,my,errmap',
-        title="Residual (No Flow E/W Periodic N/S), It#"*string(itcnt),
-        xlabel="x (meters)",
-        ylabel="y (meters)",
-        fillcolor=:inferno,
-        cb=:bottom,
-        clims=[-1e-13 1e-13]
-        )
-savefig(fig4,"HW3_F4_ErrMapSOR.svg")
-
-
-#
