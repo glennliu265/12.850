@@ -7,6 +7,8 @@ include("AllFunctions12850.jl")
 
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
+#xgrid = [0:1e5:5e6;]
+#ygrid = [0:1e5:1e7;]
 xgrid = [0:100:5000;]
 ygrid = [0:100:10000;]
 
@@ -37,8 +39,8 @@ y_c0      = δy
 
 ## Set Diffusivity Parameter -------------------------------
 # For vorticity
-κx        = ones(Float64,1,xmax) .* 1
-κy        = ones(Float64,1,ymax) .* 1
+κx        = ones(Float64,1,xmax) .* 1e1
+κy        = ones(Float64,1,ymax) .* 1e1
 κx0       = κx[1]
 κy0       = κy[1]
 
@@ -58,18 +60,17 @@ max_iter  = 1e5
 
 ## Time parameters
 dt        = 3600*24*30     # Timestep for model integration
-ts_max    = 40          # Number of timesteps to take
+ts_max    = 36          # Number of timesteps to take
 tottime   = ts_max*dt   # Total time elapsed in seconds
 fdt       = 3600*24*30  # Time Resolution of forcing (seconds)
-ft_max    = convert(Int32,ceil(tottime/fdt)) #
-
-
+ftmax    = convert(Int32,ceil(tottime/fdt))
+ftall     = 1:ftmax #
 θ         = 0.5
 
 ## Source Term Settings -------------------------------
 ρ0 = 1025 #kg/m3
 H  = 1000 #m
-τ0 = 0.1 #.* ones(xmax,ymax)  #N/m2
+τ0 = 0.1  #.* ones(xmax,ymax)  #N/m2
 
 # Set the wind directions
 # Zonal Wind
@@ -89,29 +90,8 @@ H  = 1000 #m
     # It seems that the 3rd method works the best (but lose the ends)
 
 
- # Switch from westward to eastward
-# contourf(mx,my,τx',
-#         levels=10,
-#         clabels=true,
-#         title="Eastward Wind Stress (N/m2)",
-#         xlabel="Zonal Distance (m)",
-#         ylabel="Meridional Distance (m)")
-#
-# txplot = convert(Array{Float32},τx ./ findmax(τx)[1])
 
-# Meridional Wind
-#τy = [ -τ0*cos(2*pi*x/Lx)*(y/y) for x in mx, y in my] # Switch from westward to eastward
-# τy = zeros(xmax,ymax)
-# contourf(mx,my,τy',
-#         levels=10,
-#         clabels=true,
-#         title="Northward Wind Stress (N/m2)",
-#         xlabel="Zonal Distance (m)",
-#         ylabel="Meridional Distance (m)")
-# include("AllFunctions12850.jl")
-#dτx_dy = ocnmod.ddx_1d(τx,y_f)
-
-casen = 1
+casen = 3
 # Approximate the x and y derivatives of the wind directions
 # Note: Just repeat the first elemtent for now
 #dτx_dy = ocnmod.ddx_1d(vcat(τx[1],τx),y_f)
@@ -120,47 +100,49 @@ casen = 1
 xedge = [0:δx:(Lx+2δx);]
 yedge = [0:δy:(Ly+2δy);]
 
-# Case 1: Constant Zonal Wind Only, varying cosinusoidally
+# Case 1: Constant Zonal Wind Only, increasing in time
 # Seasonal fluctuation of magnitude with time
 if casen ==1
-    dτx = [ -τ0*cos(2*pi*y/Ly)*sin(0.5*m/12*pi) for x in xedge, y in yedge, m in 1:12]
-    dτy = [ 0 for x in xedge, y in yedge, m in 1:12]
+    dτx = [ -τ0*cos(2*pi*y/Ly)* sin(pi/2*(m-1)/(ftmax-1)) for x in xedge, y in yedge, m in ftall]
+    dτy = [ 0 for x in xedge, y in yedge, m in ftall]
 end
 
 # Case 2: Vortex Translation
 if casen == 2
-    dτx = [ -τ0*cos(2*pi*y/Ly+m/6) for x in xedge, y in yedge, m in 1:12]
-    dτy = [ -τ0*cos(2*pi*x/Lx+m/6) for x in xedge, y in yedge, m in 1:12]
+    dτx = [ -τ0*cos(2*pi*y/Ly-m/6) for x in xedge, y in yedge, m in ftall]
+    dτy = [ -τ0*cos(2*pi*x/Lx+m/6) for x in xedge, y in yedge, m in ftall]
 end
 
 # Case 3: Meridional Component (v sinusoidal with x) which weakens with time
 if casen == 3
-    dτx = [ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge, m in 1:12]
-    dτy = [ -τ0*cos(2*pi*x/Lx) * sin(pi*y/Ly) for x in xedge, y in yedge, m in 1:12]
+    dτx = [ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge, m in ftall]
+    dτy = [ -τ0*cos(2*pi*x/Lx) * sin(pi*y/Ly) * sin(2*pi/2*m/ftmax) for x in xedge, y in yedge, m in ftall]
     #maskout = findall(x->(x<50 || x > 100),my)
     #dτy[:,maskout,:] .= 0
 end
 
 x_f2       = ones(Int8,1,length(xedge))*δx
 y_f2       = ones(Int8,1,length(yedge))*δx
-curlTx     = zeros(Float64,xmax,ymax,12)
-curlTy     = zeros(Float64,xmax,ymax,12)
+curlTx     = zeros(Float64,xmax,ymax,ftmax)
+curlTy     = zeros(Float64,xmax,ymax,ftmax)
 # Take x along y
-for m = 1:12
+for m = 1:ftmax
     curlTx[:,:,m],x1,y1 = ocnmod.ddx_2d(dτx[:,:,m],y_f2,xedge,yedge,2)
     curlTy[:,:,m],x1,y1 = ocnmod.ddx_2d(dτy[:,:,m],x_f2,xedge,yedge,1)
 end
 
+
+
 # ---------------------------------------------------------------------
 # Plot Wind Stress Animations
 # ---------------------------------------------------------------------
-    aniwind = @animate for t ∈ 1:12
+    aniwind = @animate for t ∈ 1:ftmax
         l = @layout[a b]
         # Plot Wind Stress
         qscale = 1e2
         wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-        pws=Plots.contourf(xedge,yedge,dτx[:,:,t]',seriescolor=:balance)
-        pws=Plots.quiver!(wspts,quiver=(wsuv),
+#        pws=Plots.contourf(xedge,yedge,dτx[:,:,t]',seriescolor=:balance)
+        pws=Plots.quiver(wspts,quiver=(wsuv),
             title="Zonal Wind Stress @ t="*string(t),
             ylims=(0,Ly),
             xlims=(0,Lx),
@@ -181,25 +163,6 @@ end
     end
     gif(aniwind,"HW4_WindStress_Case"*string(casen)*".gif",fps=2)
 
-# ---------------------------------------------------------------------
-# Directly Prescribe Wind Stress Curl
-# ---------------------------------------------------------------------
-
-# #Case 01: Forcing Maxima that translates northwest
-# if casen == 1
-#     curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly+m/6))*x/x for x in mx, y in my, m in 1:12]
-#     curlTy = [ τ0*pi/Lx*sin(1*(pi*x/Lx+m/6))*y/y for x in mx, y in my, m in 1:12]
-# end
-#
-#
-# # Case 02: Cosinusoidal zonal wind, no meriodional
-# if casen == 2
-#     curlTx = [ τ0*pi/Ly*sin(1*(pi*y/Ly))*sin(0.5*m/12*pi) for x in mx, y in my, m in 1:12]
-#     curlTy = [ 0 for x in mx, y in my, m in 1:12]
-# end
-
-#contourf(mx,my,curlTx[:,:,1]'/findmax(abs.(curlTx))[1],seriescolor=:balance,clims=(-1,1))
-
 # -----------------------------------
 # CALCULATE FORCING TERM
 # -----------------------------------
@@ -209,29 +172,31 @@ end
 # -----------------------------------
 #  Visualize Forcing Term, Quiver plot on wind curl
 # -----------------------------------
-    xi = 2
-    yi = 10
-    qscale = 5e2
+    if casen == 3
+        qscale = 5e6
+    else
+        qscale = 1
+    end
 
-    aniquiv2 = @animate for t ∈ 1:12
+    aniquiv2 = @animate for t ∈ 1:ftmax
         u = curlTx[:,:,t]
         v = curlTy[:,:,t]
         pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
         Splot = S[:,:,t] ./ findmax(abs.(S[:,:,t]))[1]
         a = heatmap(mx,my,Splot',
-#            clims=(-1,1),
+            clims=(-1,1),
             title="Forcing Term Case "*string(casen)*"; t= "*string(t),
             seriescolor=:balance,
             xlabel="x (meters)",
             ylabel="y (meters)",
             )
         a = Plots.quiver!(pts,quiver=(uv),
-            ylims=(0,150),
-            xlims=(0,50),
+            ylims=(0,Ly),
+            xlims=(0,Lx),
             lc="black"
             )
     end
-    gif(aniquiv2,"HW4_Forcing_Case"*string(casen)*".gif",fps=2)
+    gif(aniquiv2,"HW4_Forcing_Case"*string(casen)*".gif",fps=5)
 
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
@@ -294,16 +259,22 @@ for t = 1:ts_max
         else
                 x_init = zeros(Float64,xmax,ymax)
         end
-        loopstart = time()
-        m = t%12
-
-        # Get Next Month (for eqn L.H.S.)
-        nm = m + 1
-
-        # Set December month to 12
-        if m == 0
-            m = 12
+        m = t
+        if t == ts_max
+            nm = 1
+        else
+            nm = 1
         end
+        # loopstart = time()
+        # m = t%12
+        #
+        # # Get Next Month (for eqn L.H.S.)
+        # nm = m + 1
+
+        # # Set December month to 12
+        # if m == 0
+        #     m = 12
+        # end
 
         # Get Corresponding forcing term
         S0 = S[:,:,m]
@@ -329,8 +300,8 @@ for t = 1:ts_max
         ug = zeros(Float64,xmax,ymax)
         Ax,Ay,b = ocnmod.CN_make_matrix_2d(dt,θ,ug,Cx0,Cy0,Cx1,Cy1,S0,S1,1e5,chk_per)
 
-        #u_out,itcnt,r,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
-        vort_t[:,:,t],itcnt2,r2 = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter)
+        u_out,itcnt,rSOR,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Ax,Ay,b,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
+        vort_t[:,:,t],itcnt2,rCGK = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter)
 
         # Solving for streamfunction (first pass)
         # S_psi = vort_t[:,:,t]
@@ -355,7 +326,7 @@ for t = 1:ts_max
 
 end
 elapsed = time() - allstart
-fprintf('Completed calculations in %s',elapsed)
+@printf("\nCompleted calculations in %s",elapsed)
 
 # ---------------------------------------------------
 # Animate Vorticity (Left) and Streamfunction (Right)
@@ -366,9 +337,20 @@ if casen == 1
     qscale = 1e3
 elseif casen == 2
     qscale = 1e3
+elseif casen == 3
+    qscale = 5e3
 end
 x_u = mx[2:end-1]
 y_v = my[2:end-1]
+
+# Determine maximum values
+ζ0 = findmax(abs.(vort_t))[1]
+plotvort = vort_t/ζ0
+
+# Determine maximum values
+ψ0     = findmax(abs.(ψ_t))[1]
+plotsf = ψ_t/ψ0
+
 anim3 = @animate for t ∈ 1:ts_max
         l = @layout[a b]
 
@@ -380,11 +362,12 @@ anim3 = @animate for t ∈ 1:ts_max
         v = vt[:,:,t]
         pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,qscale)
 
-        c = Plots.contourf(mx,my,vort_t[:,:,t]'/findmax(abs.(vort_t))[1],
+        #c = Plots.contourf(mx,my,vort_t[:,:,t]'/findmax(abs.(vort_t))[1],
+        c = Plots.contourf(mx,my,plotvort[:,:,t]',
                 clabels=true,
                 levels=[-1:0.1:1;],
                 clims=(-1,1),
-                title="Vorticity at t="*string(t),
+                title="Vorticity; t="*string(t)*"; z0="*@sprintf("%.2e",ζ0),
                 xlabel="x (meters)",
                 ylabel="y (meters)",
                 fillcolor=:balance
@@ -395,11 +378,12 @@ anim3 = @animate for t ∈ 1:ts_max
             lc="black",
             )
 
-        h = Plots.contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
+        #h = Plots.contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
+        h = Plots.contourf(mx,my,plotsf[:,:,t]',
                 clabels=true,
                 levels=[-1:0.1:1;],
                 clims=(-1,1),
-                title="Psi at t="*string(t),
+                title="Psi; t="*string(t)*"; psi0="*@sprintf("%.2e",ψ0),
                 xlabel="x (meters)",
                 ylabel="y (meters)",
                 fillcolor=:balance
@@ -584,3 +568,101 @@ anim3 = @animate for i ∈ 1:save_iter
 
 end
 gif(anim3,"HW3_Together_sinusoidal_vert.gif",fps=10)
+
+
+kp = [10.0^x for x in (-2):1:5]
+tp8 = 1e8 ./ kp
+tp14 = 1e14 ./ kp
+#tp4 = 1e4 ./ kp
+
+
+
+
+
+
+
+
+# # ---------------------------
+# # Fig 1. Timescale vs Diffusivity Plots
+# # ---------------------------
+#     tkplot = Plots.plot(kp,tp8,
+#                 title = "Timescale vs Diffusivity; Domain = 1E8 m2",
+#                 label = "Time Scale",
+#                 xaxis = :log,
+#                 yaxis = :log,
+#                 xtick = (kp),
+#                 ylabel= "Timescale (s)",
+#                 xlabel="Diffusivity m2/s",
+#                 lw    = 2.5,
+#                 lc    = :black
+#                 )
+#     tkplot = hline!([3.145e8],label="Decadal",ls=:dot,lw=2.5,lc=:purple)
+#     tkplot = hline!([3.145e7],label="Annual",ls=:dot,lw=2.5,lc=:red)
+#     tkplot = hline!([2.592e6],label="Monthly",ls=:dot,lw=2.5,lc=:blue)
+#     tkplot = hline!([8.840e4],label="Daily",lw=2.5,ls=:dot,lc=:green)
+#     Plots.savefig(tkplot,"HW4_TimeScalevsDiffusivity.png")
+
+# ---------------------------------------------------------------------
+#  F2. Plot Wind Stress Curl
+# ---------------------------------------------------------------------
+#     l = @layout[a b]
+#     # Plot Wind Stress
+#     qscale = 5e3
+#
+#     t = 1
+#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
+#     curl0 = findmax(abs.(curlTy-curlTx))[1]
+#     #curl0 = findmax(plotcurl)[1]
+#     plotcurl = plotcurl / curl0
+#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
+#     p1=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
+#     p1=Plots.quiver!(wspts,quiver=(wsuv),
+#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
+#         ylims=(0,Ly),
+#         xlims=(0,Lx),
+#         clims=(-1,1),
+#         lc="black",
+#         ylabel="y (meters)",
+#         xlabel="x (meters)"
+#         )
+#
+#     t = 18
+#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
+#     curl0 = findmax(plotcurl)[1]
+#     plotcurl = plotcurl / curl0
+#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
+#     p2=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
+#     p2=Plots.quiver!(wspts,quiver=(wsuv),
+#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
+#         ylims=(0,Ly),
+#         xlims=(0,Lx),
+#         clims=(-1,1),
+#         lc="black",
+#         ylabel="y (meters)",
+#         xlabel="x (meters)"
+#         )
+#
+#     # Plot Wind Stress Curl
+#     pws = Plots.plot(p1,p2,layout=l)
+#
+#     Plots.savefig(pws,"HW4_WindStressPlot.svg")
+
+# # ---------------------------
+# # Fig 3. Comparison of Iterative Methods
+# # ---------------------------
+
+p1 = Plots.plot(rSOR,
+        xaxis = :log,
+        yaxis = :log,
+#        title="Convergence Speed for Iterative Methods",
+        title="Comparison of Iterative Methods",
+        xlabel="Iterations to Convergence",
+        ylabel="Residual",
+        lw = 2.5,
+        label="SOR",
+        )
+p1 = Plots.plot!(rCGK,
+        lw = 2.5,
+        label="CGK",
+        )
+Plots.savefig(p1,"HW4_Convergence_SpeedTest2_10m.svg")
