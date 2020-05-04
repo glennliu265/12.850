@@ -1640,21 +1640,357 @@ module ocnmod
         end
         return u,nx,ny
     end
+    """
+    -----------------------------------------------------------
+    FEM_UW1()
+    -----------------------------------------------------------
+    Solve a 1-D linear advection equation using forward euler in
+    space and 1st order upwind in time
+
+    Inputs
+    1) dx - uniform grid spacing
+    2) dt - uniform timestep
+    3) u  - velocity
+    """
+
+    function FEM_UW1(dx,dt,uval,tsmax,c0,xmin,xmax)
+
+        # Make Grid
+        xmin      = 0
+        xmax      = 100
+
+        # Grid Setup (u as edges, t as midpoints)
+        ugrid  = [xmin:dx:xmax;]
+        tgrid  = ocnmod.get_midpoints(ugrid)
+        xmax   = length(tgrid)
+
+        # Prescribe velocity field
+        u      = ones(size(tgrid))*uval
+
+        ## FEM - UW1
+        # Evaluate stability
+        cour = uval * dt / dx
+
+        # FEM and UW1
+        c = zeros(Float64,xmax,tsmax)
+        for t = 1:tsmax
+            dt = 1
+
+            if t == 1
+                cin = c0
+            else
+                cin = c[:,t-1]
+            end
+
+            ct = zeros(Float64,size(tgrid))
+            for i = 1:xmax
+                ui = u[i]
+                ci = cin
+
+                # Assume Periodic
+                if i == 1
+                    ip1 = i+1
+                    im1 = xmax
+                elseif i == xmax
+                    ip1 = 1
+                    im1 = i-1
+                else
+                    ip1 = i+1
+                    im1 = i-1
+                end
+
+                # Calculate u+ and u-
+                up = (ui + abs(ui))/2
+                um = (ui - abs(ui))/2
+
+                ct[i] = cin[i] - dt/dx * (up*(ci[i] - ci[im1]) + um*(ci[ip1]-ci[i]))
+
+            end
+
+            c[:,t] = ct
+        end
+        return c,tgrid,cour
+
+    end
+
+
+    """
+    -----------------------------------------------------------
+    LFM_CD()
+    -----------------------------------------------------------
+    Solve a 1-D linear advection equation using forward euler in
+    space and 1st order upwind in time
+
+    Inputs
+    1) dx - uniform grid spacing
+    2) dt - uniform timestep
+    3) u  - velocity
+    """
+
+    function LFM_CD(dx,dt,uval,tsmax,c0,xmin,xmax)
+
+        # Make Grid
+        xmin      = 0
+        xmax      = 100
+
+        # Grid Setup (u as edges, t as midpoints)
+        ugrid  = [xmin:dx:xmax;]
+        tgrid  = ocnmod.get_midpoints(ugrid)
+        xmax   = length(tgrid)
+
+        # Prescribe velocity field
+        u      = ones(size(tgrid))*uval
+
+        ## FEM - UW1
+        # Evaluate stability
+        cour = uval * dt / dx
 
 
 
+        # FEM and UW2
+        c = zeros(Float64,xmax,tsmax)
+        u      = ones(size(ugrid))*uval
+        for t = 1:tsmax
+            dt = 1
+
+            if t == 1
+                cin = c0
+            else
+                cin = c[:,t-1]
+            end
+
+            if t <= 2
+                cim1 = c0
+            else
+                cim1 = c[:,t-2]
+            end
+
+            ct = zeros(Float64,size(tgrid))
+            for i = 1:xmax
+
+                ci = cin
+                ui = u[i]
+
+                # Assume Periodic
+                if i == 1
+                    ip1 = i+1
+                    im1 = xmax
+
+                elseif i == xmax
+
+                    ip1 = 1
+                    im1 = i-1
+
+                elseif i == xmax-1
+
+                    ip1 = i+1
+                    im1 = i-1
+
+                else
+
+                    ip1 = i+1
+                    im1 = i-1
+
+                end
+
+                ct[i] = cim1[i] - ui*dt/(2*dx)*(ci[ip1]-ci[im1])
+
+            end
+
+            c[:,t] = ct
+        end
+
+        return c,tgrid,cour
+
+    end
 
 
+        """
+        -----------------------------------------------------------
+        UW_calc_coeff_2D
+        -----------------------------------------------------------
+            Compute both C (Matrix of Coefficients) and modification to
+            corresponding forcing term
+
+            NOTE: Assumes Forcing term is on the same side of the equation
+            as the diffusion term.
+
+            Inputs:
+                ||~ Box Geometry and Indices ~||
+                z_f    = cell spacing
+                zmax   = size of cells in target direction
+
+                ||~ Initial Profiles         ~||
+                u      = velocity field
+
+                ||~ Boundary Conditions      ~||
+                BC_top  = 1 for Dirichlet, 2 for Neumann
+                val_top = Input value for top (matches size of other dim)
+                BC_bot  = 1 for Dirichlet, 2 for Neumann
+                val_bot = Input value for bot (matches size of other dim)
+
+            Outputs:
+                1) C - Matrix of Coefficients [1:3,kmax]
+                    1 = C(k,k-1); 2 = C(k,k); 3 = C(k,k+1)
+                2) B - Column vector of modification to Source/Sink Terms, with
+                    first and last entries modified for BCs along the other dimension
+            """
+        function UW_calc_coeff_2D(z_f,zmax,          # Cell face width [i]
+            u,                                  # velocity field [ixj]
+            BC_top,val_top,                     # Bottom BCs [j]
+            BC_bot,val_bot)                     # Top BCs [j]
 
 
+            ymax = length(val_top)
+            # Preallocate C: length of dimension
+            # B: length of boundary
+            C = zeros(Float64,3,zmax,ymax)
+            B = zeros(Float64,zmax,ymax) # 1st dim, 1=bot,2=top,
+
+            for i = 1:zmax
+
+                # Indexing, Begin by assuming periodic
+
+                # For the bottom boundary
+                if i == 1
+
+                    ip1 = i+1
+                    ip2 = i+2
+
+                    # For bottom, index from the top
+                    im1 = zmax
+                    im2 = zmax-1
+
+                # For the penultimate bottom pt
+                elseif i == 2
+
+                    ip1 = i+1
+                    ip2 = i+2
+                    im1 = i-1
+
+                    # For bottom, index from the top
+                    im2 = zmax
+
+                # Top boundary
+            elseif i == zmax
+
+                    # Index top points back to bottom
+                    ip1 = 1
+                    ip2 = 2
+
+                    im1 = i-1
+                    im2 = i-2
+
+                # Penultimate top point
+            elseif i == zmax-1
+
+                    # Index points back from bottom
+                    ip2 = 1
+
+                    ip1 = i+1
+                    im1 = i-1
+                    im2 = i-2
+
+            # Interior Points --> Act Normal!
+            else
+
+                ip1 = i+1
+                ip2 = i+2
+                im1 = i-1
+                im2 = i-2
+
+            end
+
+            # Get Velocity
+            for j = 1:ymax
+
+                # -------------
+                # Get the winds
+                ub = u[i,j]
+                ut = u[i,j+1]
+
+                # Calculate u+ and u- for top and bottom
+                utp = (ut + abs(ut))/2 # u-top plus (ue)
+                utm = (ut - abs(ut))/2 # u-bot minus (ue)
+
+                ubp = (ub + abs(ub))/2 # u-bottom plus (uw)
+                ubm = (ub - abs(ub))/2 # u-bottom minus (uw)
+
+                # -------------
+                # Get grid spacing for point
+                #dz = z_f[i,j]
+                dz  = z_f[i]
+
+                # ----------------------
+                # Calculate Coefficients
 
 
+                # Begin by indexing, assuming as if everything was periodic
+                C[1,im1,j] = ubp / dz
+                C[2,i,j]   = -1* (utp - ubm) / dz
+                C[3,ip1,j] = utm / dz
 
+                # Bottom Boundaries (assuming both im1 and im2 draw from same pool)
+                if i == 1 #|| i == 2
 
+                    # Set the i+1 and i+2 cell (same for all cases) [QUICK draft]
+                    #C[4,ip1,j] = (ut/2 - utp/8 + utm/4 + ubm/8) / z_f[ip1,j]
+                    #C[5,ip2,j] = (ut/2 - utp/8 + utm/4 + ubm/8) / z_f[ip2,j]
 
+                    # Set the i+1 cell (same as interior)
+                    #C[3,ip1,j] = -1 * utm / dz
 
+                    # Dirichlet BC
+                    if  BC_bot == 1
 
+                        # Set i-1 cell to zero and move to forcing
+                        C[1,im1,j] = 0
+                        B[i,j]     = 2 * ubp * val_bot[j] / dz
 
+                        # Alter Interior Cell
+                        C[2,i,j]   = -1* (2*utp - ubm) / dz
+
+                    # Neumann BC
+                    elseif BC_bot == 2
+
+                        # Set i-1 cell to zero and move to forcing
+                        C[1,im1,j] = 0
+                        B[i,j]     = val_bot[j] / dz
+
+                        # Alter Interior Cell
+                        C[2,i,j]   = -1*utp / dz
+                    end
+                end
+
+                # Top Boundary
+                if i == zmax
+
+                    # Set the i-1 cell (same as interior)
+                    #C[1,im1,j] = ubp / dz
+
+                    if BC_top == 1
+
+                        C[3,ip1,j] = 0
+                        B[i,j]     = -2*utm / dz * val_top[j]
+
+                        C[2,i,j]   = -1*(utp-2*ubm) / dz
+
+                    elseif BC_top == 2
+
+                        C[3,ip1,j] = 0
+                        B[i,j]     = -1*val_top[j] / dz
+
+                        C[2,i,j]   = ubm / dz
+
+                    end
+
+                end
+            end
+        end
+        return C,B
+    end
+
+    
 
 
 # Module End
