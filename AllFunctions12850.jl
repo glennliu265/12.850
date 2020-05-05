@@ -1903,145 +1903,92 @@ module ocnmod
             B = zeros(Float64,zmax,ymax) # 1st dim, 1=bot,2=top,
 
             for i = 1:zmax
-            #
-            #     # Indexing, Begin by assuming periodic
-            #
-            #     # For the bottom boundary
-            #     if i == 1
-            #
-            #         ip1 = i+1
-            #         ip2 = i+2
-            #
-            #         # For bottom, index from the top
-            #         im1 = zmax
-            #         im2 = zmax-1
-            #
-            #     # For the penultimate bottom pt
-            #     elseif i == 2
-            #
-            #         ip1 = i+1
-            #         ip2 = i+2
-            #         im1 = i-1
-            #
-            #         # For bottom, index from the top
-            #         im2 = zmax
-            #
-            #     # Top boundary
-            # elseif i == zmax
-            #
-            #         # Index top points back to bottom
-            #         ip1 = 1
-            #         ip2 = 2
-            #
-            #         im1 = i-1
-            #         im2 = i-2
-            #
-            #     # Penultimate top point
-            # elseif i == zmax-1
-            #
-            #         # Index points back from bottom
-            #         ip2 = 1
-            #
-            #         ip1 = i+1
-            #         im1 = i-1
-            #         im2 = i-2
-            #
-            # # Interior Points --> Act Normal!
-            # else
-            #
-            #     ip1 = i+1
-            #     ip2 = i+2
-            #     im1 = i-1
-            #     im2 = i-2
-            #
-            # end
 
-            # Get Velocity
-            for j = 1:ymax
+                for j = 1:ymax
 
-                # -------------
-                # Get the winds
-                uw = u[i,j]
-                ue = u[i+1,j]
+                    # -------------
+                    # Get the winds
+                    uw = u[i,j]
+                    ue = u[i+1,j]
 
-                # Calculate u+ and u- for top and bottom
-                uep = (ue + abs(ue))/2 # u-top plus (ue)
-                uem = (ue - abs(ue))/2 # u-bot minus (ue)
+                    # Calculate u+ and u- for top and bottom
+                    uep = (ue + abs(ue))/2 # u-top plus (ue)
+                    uem = (ue - abs(ue))/2 # u-bot minus (ue)
 
-                uwp = (uw + abs(uw))/2 # u-bottom plus (uw)
-                uwm = (uw - abs(uw))/2 # u-bottom minus (uw)
+                    uwp = (uw + abs(uw))/2 # u-bottom plus (uw)
+                    uwm = (uw - abs(uw))/2 # u-bottom minus (uw)
 
-                # -------------
-                # Get grid spacing for point
-                #dz = z_f[i,j]
-                dz  = z_f[i]
+                    # -------------
+                    # Get grid spacing for point
+                    #dz = z_f[i,j]
+                    dz  = -1*z_f[i]
 
-                # ----------------------
-                # Calculate Coefficients
+                    # ----------------------
+                    # Calculate Coefficients
 
 
-                # Begin by indexing, assuming as if everything was periodic
-                C[1,i,j] = uwp / dz
-                C[2,i,j]   = -1* (uep - uwm) / dz
-                C[3,i,j] = uem / dz
+                    # Begin by indexing, assuming as if everything was periodic
+                    C[1,i,j] = -uwp#uwp / dz
+                    C[2,i,j] = uep-uwm#-1* (uep - uwm) / dz
+                    C[3,i,j] = uem#uem / dz
 
-                # Bottom Boundaries (assuming both im1 and im2 draw from same pool)
-                if i == 1 #|| i == 2
+                    # Bottom Boundaries (assuming both im1 and im2 draw from same pool)
+                    if i == 1
 
-                    # Set the i+1 and i+2 cell (same for all cases) [QUICK draft]
-                    #C[4,ip1,j] = (ue/2 - uep/8 + uem/4 + uwm/8) / z_f[ip1,j]
-                    #C[5,ip2,j] = (ue/2 - uep/8 + uem/4 + uwm/8) / z_f[ip2,j]
+                        # Dirichlet BC
+                        if  BC_bot == 1
 
-                    # Set the i+1 cell (same as interior)
-                    #C[3,ip1,j] = -1 * uem / dz
+                            # Set i-1 cell to zero and move to forcing
+                            C[1,i,j]   = 0
+                            B[i,j]     = 2*uwp*val_bot[j]# 2 * uwp * val_bot[j] / dz
 
-                    # Dirichlet BC
-                    if  BC_bot == 1
+                            # Alter Interior Cell
+                            C[2,i,j]   = 2*uep-uwm#-1* (2*uep - uwm) / dz
 
-                        # Set i-1 cell to zero and move to forcing
-                        C[1,i,j] = 0
-                        B[i,j]     = 2 * uwp * val_bot[j] / dz
+                        # Neumann BC
+                        elseif BC_bot == 2
 
-                        # Alter Interior Cell
-                        C[2,i,j]   = -1* (2*uep - uwm) / dz
+                            # Set i-1 cell to zero and move to forcing
+                            C[1,i,j]   = 0
+                            B[i,j]     = -1*val_bot[j] #/ dz
 
-                    # Neumann BC
-                    elseif BC_bot == 2
-
-                        # Set i-1 cell to zero and move to forcing
-                        C[1,i,j] = 0
-                        B[i,j]     = val_bot[j] / dz
-
-                        # Alter Interior Cell
-                        C[2,i,j]   = -1*uep / dz
-                    end
-                end
-
-                # Top Boundary
-                if i == zmax
-
-                    # Set the i-1 cell (same as interior)
-                    #C[1,im1,j] = uwp / dz
-
-                    if BC_top == 1
-
-                        C[3,i,j] = 0
-                        B[i,j]     = -2*uem / dz * val_top[j]
-
-                        C[2,i,j]   = -1*(uep-2*uwm) / dz
-
-                    elseif BC_top == 2
-
-                        C[3,i,j] = 0
-                        B[i,j]     = -1*val_top[j] / dz
-
-                        C[2,i,j]   = uwm / dz
-
+                            # Alter Interior Cell
+                            C[2,i,j]   = uep #-1*uep / dz
+                        end
                     end
 
+                    # Top Boundary
+                    if i == zmax
+
+                        # Set the i-1 cell (same as interior)
+                        #C[1,im1,j] = uwp / dz
+
+                        if BC_top == 1
+
+                            C[3,i,j] = 0
+                            B[i,j]     = 2*uem*val_top[j]#-2*uem / dz * val_top[j]
+
+                            C[2,i,j]   = uep-2*uwm#-1*(uep-2*uwm) / dz
+
+                        elseif BC_top == 2
+
+                            C[3,i,j] = 0
+                            B[i,j]     = val_top[j]*uem#-1*val_top[j] / dz
+
+                            C[2,i,j]   = uep-uwm#uwm / dz
+
+                        end
+                        # C[1,i,j] /= dz
+                        # C[3,i,j] /= dz
+                        # C[2,i,j] /= dz
+                        # B[i,j]   /= dz
+
+                    end
                 end
             end
-        end
+            C /= -z_f[1]
+            B /= -z_f[1]
+
         return C,B
     end
 
