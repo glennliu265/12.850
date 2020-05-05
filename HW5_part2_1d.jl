@@ -29,32 +29,39 @@ u = [1 for x in xgrid, t in 1:ts_max]
 
 # Set BCs
 WBC = 3
-wb_val = [0]#[y/y for y in mx]
+wb_val = 0#[y/y for y in mx]
 
 # Eastern
 EBC = 3
-eb_val = [0]#[y/y for y in my]
+eb_val = 0#[y/y for y in my]
 
 chk_per = [1,1]
 
 ## Forcing
 
 S = [0 for x in mx, t in 1:ts_max]
+#S[5,:] .= 1
 
 
 
 ## Time parameters
 dt        = 1    # Timestep for model integration
-ts_max    = 25         # Number of timesteps to take
+ts_max    = 20         # Number of timesteps to take
 θ         = 0
 
 
 ## IC
 
 T0 = 5*ones(Float64,xmax)
-mask    = 20 .< mx .< 50
+mask    = 80 .< mx .< 90
 T0 = T0 .* mask
-plot(mx,T0)
+# plot(mx,T0)
+
+## Iteraiton Parametsers
+tol       = 1e-7
+ω         = 1.6
+printint  = 1e3
+method    = 3
 
 ## Script start?
 
@@ -90,7 +97,7 @@ for t = 1:ts_max
         S1 += B1
 
         # Set up CN Matrices
-        A,b = ocn5.CN_make_matrix_1D(dt,θ,IC,C0,C1,S0,S1,x_f,chk_per)
+        A,b = ocn5.CN_make_matrix_1D(dt,θ,IC,C0,-1*C1,S0,S1,x_f,chk_per)
 
         # Solve matrix by inversion
                 # Tridiag method
@@ -100,17 +107,20 @@ for t = 1:ts_max
 
         A_tri = Tridiagonal(dl,d,du)
 
+        # Solution by solving iteratively
+        temps[:,t],itcnt,r= ocn5.FD_itrsolve_1D(A,b,IC,tol,method,ω,printint,chk_per)
+
         # Save solution by inversion
-        tinv[:,t] = b' * inv(A_tri)
+        #tinv[:,t] = b' * inv(A_tri)
 
 
 end
 
 animtest = @animate for t ∈ 1:ts_max
     #if t%2 == 0
-        plot(mx,tinv[:,t],
+        plot(mx,temps[:,t],
             title ="t="*string(t),
-            ylims=(-6,6)
+            ylims=(-10,10)
             )
         #end
 
