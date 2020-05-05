@@ -826,9 +826,14 @@ module ocnmod
              r       = Array of residuals per iteration
              err_map = Map of the error for the final timestep
     """
-    function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter,saveiter)
-        xmax = size(Cx,2)
-        ymax = size(Cy,2)
+    function FD_itrsolve_2D(Cx,Cy,S,ug,tol,ω,method,wper,eper,sper,nper,maxiter,saveiter,ver)
+        if ver == 1
+            xmax = size(Cx,2)
+            ymax = size(Cy,2)
+        elseif ver == 2
+            xmax = size(Cx,2)
+            ymax = size(Cx,3)
+        end
 
         # Assign per to individual matrix
         chk_per = zeros(Int,4)
@@ -856,17 +861,31 @@ module ocnmod
             # Loop for each column, by row
             for j = 1:ymax
 
-                # Get Coefficients (y)
-                B1  = Cy[1,j]
-                #B3y = Cy[2,j]
-                B5  = Cy[3,j]
+
 
                 for i = 1:xmax
+                    if ver == 1
+                        # Get Coefficients (y)
+                        B1  = Cy[1,j]
+                        #B3y = Cy[2,j]
+                        B5  = Cy[3,j]
 
-                    # Get Coefficients (x)
-                    B2 = Cx[1,i]
-                    B3 = Cy[2,j] + Cx[2,i]
-                    B4 = Cx[3,i]
+                        # Get Coefficients (x)
+                        B2 = Cx[1,i]
+                        B3 = Cy[2,j] + Cx[2,i]
+                        B4 = Cx[3,i]
+                    elseif ver == 2
+                        # Get Coefficients (y)
+                        B1  = Cy[1,i,j]
+                        #B3y = Cy[2,j]
+                        B5  = Cy[3,i,j]
+
+                        # Get Coefficients (x)
+                        B2 = Cx[1,i,j]
+                        B3 = Cy[2,i,j] + Cx[2,i,j]
+                        B4 = Cx[3,i,j]
+
+                    end
 
                     # Retrieve value from Source Term
                     f = S[i,j]
@@ -941,7 +960,7 @@ module ocnmod
             end
 
             # Multiply A (mat. of coeffs) by x (guess)
-            Sg = Ax_2D(Cx,Cy,u[2,:,:],chk_per)
+            Sg = Ax_2D(Cx,Cy,u[2,:,:],chk_per,2)
 
             # Calculate residual
             err = S - Sg
@@ -1093,9 +1112,14 @@ module ocnmod
             4) x       = Guess                       [i x j]
             5) chk_per = Boolean for periodic BC     [4 (N,S,E,W)], 1 = period, 0 = not
     """
-    function Ax_2D(Cx,Cy,x,chk_per)
-        xmax = size(Cx,2)
-        ymax = size(Cy,2)
+    function Ax_2D(Cx,Cy,x,chk_per,ver)
+        if ver == 1
+            xmax = size(Cx,2)
+            ymax = size(Cy,2)
+        elseif ver == 2
+            xmax = size(Cx,2)
+            ymax = size(Cx,3)
+        end
 
         nper = chk_per[1]
         sper = chk_per[2]
@@ -1106,15 +1130,31 @@ module ocnmod
 
         for j = 1:ymax
 
-            # Get Coefficients (y)
-            B1  = Cy[1,j]
-            B5  = Cy[3,j]
+
 
             for i = 1:xmax
-                # Get Coefficients (x)
-                B2 = Cx[1,i]
-                B3 = Cy[2,j] + Cx[2,i]
-                B4 = Cx[3,i]
+
+                if ver == 1
+                    # Get Coefficients (y)
+                    B1  = Cy[1,j]
+                    B5  = Cy[3,j]
+
+                    # Get Coefficients (x)
+                    B2 = Cx[1,i]
+                    B3 = Cy[2,j] + Cx[2,i]
+                    B4 = Cx[3,i]
+                elseif ver == 2
+
+                    # Coefficients are size i x j
+                    # Get Coefficients (y)
+                    B1  = Cy[1,i,j]
+                    B5  = Cy[3,i,j]
+
+                    # Get Coefficients (x)
+                    B2 = Cx[1,i,j]
+                    B3 = Cy[2,i,j] + Cx[2,i,j]
+                    B4 = Cx[3,i,j]
+                end
 
                 # First, assume periodic boudaries
                 # Make i indices periodic
@@ -1190,10 +1230,16 @@ module ocnmod
             2) itcnt   - count of iterations
             3) res     - residual for each iteration
     """
-    function cgk_2d(Cx,Cy,S,xg,chk_per,tol,maxiter)
+    function cgk_2d(Cx,Cy,S,xg,chk_per,tol,maxiter,ver)
         start = time()
-        xmax = size(Cx,2)
-        ymax = size(Cy,2)
+        if ver == 1
+            xmax = size(Cx,2)
+            ymax = size(Cy,2)
+        elseif ver == 2
+            xmax = size(Cx,2)
+            ymax = size(Cx,3)
+        end
+
         # Preallocate array of residuals
         res   = Float64[]           # Array to store stepsize
         r0    = zeros(xmax,ymax)
@@ -1204,7 +1250,8 @@ module ocnmod
         push!(res,tol+1)
 
         # Compute first residual and direction
-        Ax  = Ax_2D(Cx,Cy,xg,chk_per)
+
+        Ax  = Ax_2D(Cx,Cy,xg,chk_per,ver)
         r0  = S - Ax
         d0  = r0
         x0  = xg
@@ -1220,7 +1267,7 @@ module ocnmod
             # # ------------------------------------------
             # # 1. Compute Step Size α = d^2 / (d * A * d)
             # # ------------------------------------------
-            Ad0 = Ax_2D(Cx,Cy,d0,chk_per)
+            Ad0 = Ax_2D(Cx,Cy,d0,chk_per,ver)
             α   = sum(r0.^2) / sum(d0 .* Ad0)
 
             # # ------------------------------------------
@@ -1229,7 +1276,7 @@ module ocnmod
 
             x   = x0 + α*d0
 
-            Ax1 = Ax_2D(Cx,Cy,x,chk_per)
+            Ax1 = Ax_2D(Cx,Cy,x,chk_per,ver)
             r1  = S - Ax1
             push!(res,norm(r1))
             if norm(r1) < tol
@@ -1367,7 +1414,7 @@ module ocnmod
             1) b  = premultiplied "Forcing Term" that combines Inputs(3,4,6,7)
             2) A  = premultiplied B matrix
         """
-    function CN_make_matrix_2d(Δt,θ,IC,Cx,Cy,Bx,By,fr,fl,kprint,chk_per)
+    function CN_make_matrix_2d(Δt,θ,IC,Cx,Cy,Bx,By,fr,fl,kprint,chk_per,ver)
 
         start = time()
 
@@ -1376,7 +1423,6 @@ module ocnmod
         l_mult =  -Δt*(θ)
         # RHS - For timestep (n)  , multiply by 1-θ
         r_mult =  Δt*(1-θ)
-
 
         # Multiply variables by time and theta factors
         Bx      = Bx  .* l_mult
@@ -1388,13 +1434,22 @@ module ocnmod
 
         # Meth2: Add single digit post-multiplication
         # To diagonal (Ck,Bk)
-        Cx[2,:] = Cx[2,:] .+ 1
-        #Cy[2,:] = Cy[2,:] .+ 1
-        By[2,:] = By[2,:] .+ 1
-        #Bx[2,:] = Bx[2,:] .+ 1
+        if ver == 1
+            Cx[2,:] = Cx[2,:] .+ 1
+            #Cy[2,:] = Cy[2,:] .+ 1
+            By[2,:] = By[2,:] .+ 1
+            #Bx[2,:] = Bx[2,:] .+ 1
+            Cx = Ax_2D(Cx,Cy,IC,chk_per,1)
+        elseif ver ==2
+            Cx[2,:,:] = Cx[2,:,:] .+ 1
+            #Cy[2,:] = Cy[2,:] .+ 1
+            By[2,:,:] = By[2,:,:] .+ 1
+            Cx = Ax_2D(Cx,Cy,IC,chk_per,2)
+            #Bx[2,:] = Bx[2,:] .+ 1
+        end
 
         # Now combine terms
-        Cx = Ax_2D(Cx,Cy,IC,chk_per)
+
         b     = Cx + fr - fl # Bring Sl from left side
 
         Ax     = Bx
@@ -1805,17 +1860,17 @@ module ocnmod
     end
 
 
-        """
+    """
         -----------------------------------------------------------
         UW_calc_coeff_2D
         -----------------------------------------------------------
-            Compute both C (Matrix of Coefficients) and modification to
+            Compuee both C (Matrix of Coefficients) and modification to
             corresponding forcing term
 
             NOTE: Assumes Forcing term is on the same side of the equation
             as the diffusion term.
 
-            Inputs:
+            Inpues:
                 ||~ Box Geometry and Indices ~||
                 z_f    = cell spacing
                 zmax   = size of cells in target direction
@@ -1825,11 +1880,11 @@ module ocnmod
 
                 ||~ Boundary Conditions      ~||
                 BC_top  = 1 for Dirichlet, 2 for Neumann
-                val_top = Input value for top (matches size of other dim)
+                val_top = Inpue value for top (matches size of other dim)
                 BC_bot  = 1 for Dirichlet, 2 for Neumann
-                val_bot = Input value for bot (matches size of other dim)
+                val_bot = Inpue value for bot (matches size of other dim)
 
-            Outputs:
+            Ouepues:
                 1) C - Matrix of Coefficients [1:3,kmax]
                     1 = C(k,k-1); 2 = C(k,k); 3 = C(k,k+1)
                 2) B - Column vector of modification to Source/Sink Terms, with
@@ -1848,73 +1903,73 @@ module ocnmod
             B = zeros(Float64,zmax,ymax) # 1st dim, 1=bot,2=top,
 
             for i = 1:zmax
-
-                # Indexing, Begin by assuming periodic
-
-                # For the bottom boundary
-                if i == 1
-
-                    ip1 = i+1
-                    ip2 = i+2
-
-                    # For bottom, index from the top
-                    im1 = zmax
-                    im2 = zmax-1
-
-                # For the penultimate bottom pt
-                elseif i == 2
-
-                    ip1 = i+1
-                    ip2 = i+2
-                    im1 = i-1
-
-                    # For bottom, index from the top
-                    im2 = zmax
-
-                # Top boundary
-            elseif i == zmax
-
-                    # Index top points back to bottom
-                    ip1 = 1
-                    ip2 = 2
-
-                    im1 = i-1
-                    im2 = i-2
-
-                # Penultimate top point
-            elseif i == zmax-1
-
-                    # Index points back from bottom
-                    ip2 = 1
-
-                    ip1 = i+1
-                    im1 = i-1
-                    im2 = i-2
-
-            # Interior Points --> Act Normal!
-            else
-
-                ip1 = i+1
-                ip2 = i+2
-                im1 = i-1
-                im2 = i-2
-
-            end
+            #
+            #     # Indexing, Begin by assuming periodic
+            #
+            #     # For the bottom boundary
+            #     if i == 1
+            #
+            #         ip1 = i+1
+            #         ip2 = i+2
+            #
+            #         # For bottom, index from the top
+            #         im1 = zmax
+            #         im2 = zmax-1
+            #
+            #     # For the penultimate bottom pt
+            #     elseif i == 2
+            #
+            #         ip1 = i+1
+            #         ip2 = i+2
+            #         im1 = i-1
+            #
+            #         # For bottom, index from the top
+            #         im2 = zmax
+            #
+            #     # Top boundary
+            # elseif i == zmax
+            #
+            #         # Index top points back to bottom
+            #         ip1 = 1
+            #         ip2 = 2
+            #
+            #         im1 = i-1
+            #         im2 = i-2
+            #
+            #     # Penultimate top point
+            # elseif i == zmax-1
+            #
+            #         # Index points back from bottom
+            #         ip2 = 1
+            #
+            #         ip1 = i+1
+            #         im1 = i-1
+            #         im2 = i-2
+            #
+            # # Interior Points --> Act Normal!
+            # else
+            #
+            #     ip1 = i+1
+            #     ip2 = i+2
+            #     im1 = i-1
+            #     im2 = i-2
+            #
+            # end
 
             # Get Velocity
             for j = 1:ymax
 
                 # -------------
                 # Get the winds
-                ub = u[i,j]
-                ut = u[i,j+1]
+                uw = u[i,j]
+                ue = u[i+1,j]
 
                 # Calculate u+ and u- for top and bottom
-                utp = (ut + abs(ut))/2 # u-top plus (ue)
-                utm = (ut - abs(ut))/2 # u-bot minus (ue)
+                uep = (ue + abs(ue))/2 # u-top plus (ue)
+                uem = (ue - abs(ue))/2 # u-bot minus (ue)
 
-                ubp = (ub + abs(ub))/2 # u-bottom plus (uw)
-                ubm = (ub - abs(ub))/2 # u-bottom minus (uw)
+                uwp = (uw + abs(uw))/2 # u-bottom plus (uw)
+                uwm = (uw - abs(uw))/2 # u-bottom minus (uw)
 
                 # -------------
                 # Get grid spacing for point
@@ -1926,39 +1981,39 @@ module ocnmod
 
 
                 # Begin by indexing, assuming as if everything was periodic
-                C[1,im1,j] = ubp / dz
-                C[2,i,j]   = -1* (utp - ubm) / dz
-                C[3,ip1,j] = utm / dz
+                C[1,i,j] = uwp / dz
+                C[2,i,j]   = -1* (uep - uwm) / dz
+                C[3,i,j] = uem / dz
 
                 # Bottom Boundaries (assuming both im1 and im2 draw from same pool)
                 if i == 1 #|| i == 2
 
                     # Set the i+1 and i+2 cell (same for all cases) [QUICK draft]
-                    #C[4,ip1,j] = (ut/2 - utp/8 + utm/4 + ubm/8) / z_f[ip1,j]
-                    #C[5,ip2,j] = (ut/2 - utp/8 + utm/4 + ubm/8) / z_f[ip2,j]
+                    #C[4,ip1,j] = (ue/2 - uep/8 + uem/4 + uwm/8) / z_f[ip1,j]
+                    #C[5,ip2,j] = (ue/2 - uep/8 + uem/4 + uwm/8) / z_f[ip2,j]
 
                     # Set the i+1 cell (same as interior)
-                    #C[3,ip1,j] = -1 * utm / dz
+                    #C[3,ip1,j] = -1 * uem / dz
 
                     # Dirichlet BC
                     if  BC_bot == 1
 
                         # Set i-1 cell to zero and move to forcing
-                        C[1,im1,j] = 0
-                        B[i,j]     = 2 * ubp * val_bot[j] / dz
+                        C[1,i,j] = 0
+                        B[i,j]     = 2 * uwp * val_bot[j] / dz
 
                         # Alter Interior Cell
-                        C[2,i,j]   = -1* (2*utp - ubm) / dz
+                        C[2,i,j]   = -1* (2*uep - uwm) / dz
 
                     # Neumann BC
                     elseif BC_bot == 2
 
                         # Set i-1 cell to zero and move to forcing
-                        C[1,im1,j] = 0
+                        C[1,i,j] = 0
                         B[i,j]     = val_bot[j] / dz
 
                         # Alter Interior Cell
-                        C[2,i,j]   = -1*utp / dz
+                        C[2,i,j]   = -1*uep / dz
                     end
                 end
 
@@ -1966,21 +2021,21 @@ module ocnmod
                 if i == zmax
 
                     # Set the i-1 cell (same as interior)
-                    #C[1,im1,j] = ubp / dz
+                    #C[1,im1,j] = uwp / dz
 
                     if BC_top == 1
 
-                        C[3,ip1,j] = 0
-                        B[i,j]     = -2*utm / dz * val_top[j]
+                        C[3,i,j] = 0
+                        B[i,j]     = -2*uem / dz * val_top[j]
 
-                        C[2,i,j]   = -1*(utp-2*ubm) / dz
+                        C[2,i,j]   = -1*(uep-2*uwm) / dz
 
                     elseif BC_top == 2
 
-                        C[3,ip1,j] = 0
+                        C[3,i,j] = 0
                         B[i,j]     = -1*val_top[j] / dz
 
-                        C[2,i,j]   = ubm / dz
+                        C[2,i,j]   = uwm / dz
 
                     end
 
@@ -1990,7 +2045,6 @@ module ocnmod
         return C,B
     end
 
-    
 
 
 # Module End
