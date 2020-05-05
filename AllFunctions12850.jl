@@ -1444,13 +1444,13 @@ module ocnmod
             Cx[2,:,:] = Cx[2,:,:] .+ 1
             #Cy[2,:] = Cy[2,:] .+ 1
             By[2,:,:] = By[2,:,:] .+ 1
-            Cx = Ax_2D(Cx,Cy,IC,chk_per,2)
+            Cmx = Ax_2D(Cx,Cy,IC,chk_per,2)
             #Bx[2,:] = Bx[2,:] .+ 1
         end
 
         # Now combine terms
 
-        b     = Cx + fr - fl # Bring Sl from left side
+        b     = Cmx + fr - fl # Bring Sl from left side
 
         Ax     = Bx
         Ay     = By
@@ -1908,15 +1908,17 @@ module ocnmod
 
                     # -------------
                     # Get the winds
-                    uw = u[i,j]
-                    ue = u[i+1,j]
-
+                    #uw = u[i,j]
+                    #ue = u[i,j]
+                    ui = u[i,j]
+                    up = (ui + abs(ui))/2 # u-top plus (ue)
+                    um = (ui - abs(ui))/2 # u-bot minus (ue)
                     # Calculate u+ and u- for top and bottom
-                    uep = (ue + abs(ue))/2 # u-top plus (ue)
-                    uem = (ue - abs(ue))/2 # u-bot minus (ue)
+                    #uep = (ue + abs(ue))/2 # u-top plus (ue)
+                    #uem = (ue - abs(ue))/2 # u-bot minus (ue)
 
-                    uwp = (uw + abs(uw))/2 # u-bottom plus (uw)
-                    uwm = (uw - abs(uw))/2 # u-bottom minus (uw)
+                    #uwp = uep#(uw + abs(uw))/2 # u-bottom plus (uw)
+                    #uwm = uem#(uw - abs(uw))/2 # u-bottom minus (uw)
 
                     # -------------
                     # Get grid spacing for point
@@ -1928,9 +1930,9 @@ module ocnmod
 
 
                     # Begin by indexing, assuming as if everything was periodic
-                    C[1,i,j] = -uwp#uwp / dz
-                    C[2,i,j] = uep-uwm#-1* (uep - uwm) / dz
-                    C[3,i,j] = uem#uem / dz
+                    C[1,i,j] = -up#-uwp
+                    C[2,i,j] = up-um#uep-uwm
+                    C[3,i,j] = um#uem
 
                     # Bottom Boundaries (assuming both im1 and im2 draw from same pool)
                     if i == 1
@@ -1940,10 +1942,10 @@ module ocnmod
 
                             # Set i-1 cell to zero and move to forcing
                             C[1,i,j]   = 0
-                            B[i,j]     = 2*uwp*val_bot[j]# 2 * uwp * val_bot[j] / dz
+                            B[i,j]     = -2*up*val_bot[j]#2*uwp*val_bot[j]# 2 * uwp * val_bot[j] / dz
 
                             # Alter Interior Cell
-                            C[2,i,j]   = 2*uep-uwm#-1* (2*uep - uwm) / dz
+                            C[2,i,j]   = 2*up-um#2*uep-uwm#-1* (2*uep - uwm) / dz
 
                         # Neumann BC
                         elseif BC_bot == 2
@@ -1953,7 +1955,7 @@ module ocnmod
                             B[i,j]     = -1*val_bot[j] #/ dz
 
                             # Alter Interior Cell
-                            C[2,i,j]   = uep #-1*uep / dz
+                            C[2,i,j]   = up#uep #-1*uep / dz
                         end
                     end
 
@@ -1966,14 +1968,14 @@ module ocnmod
                         if BC_top == 1
 
                             C[3,i,j] = 0
-                            B[i,j]     = 2*uem*val_top[j]#-2*uem / dz * val_top[j]
+                            B[i,j]     = 2*um*val_top[j]#2*uem*val_top[j]
 
-                            C[2,i,j]   = uep-2*uwm#-1*(uep-2*uwm) / dz
+                            C[2,i,j]   = up-2*um#uep-2*uwm
 
                         elseif BC_top == 2
 
                             C[3,i,j] = 0
-                            B[i,j]     = val_top[j]*uem#-1*val_top[j] / dz
+                            B[i,j]     = val_top[j]*um#val_top[j]*uem
 
                             C[2,i,j]   = uep-uwm#uwm / dz
 
