@@ -3,7 +3,6 @@ using LinearAlgebra
 using Printf
 include("AllFunctions12850.jl")
 
-
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
 #xgrid = [0:1e5:5e6;]
@@ -46,41 +45,57 @@ save_iter = 1000
 max_iter  = 1e3
 
 ## Time parameters
-dt        = .5#3600*24*30     # Timestep for model integration
-ts_max    = 50        # Number of timesteps to take
+dt        = 0.1#3600*24*30     # Timestep for model integration
+ts_max    = 100        # Number of timesteps to take
 θ         = 0.5
+
+
+## Courant to evaluate stability
+uval = 10
+vval = 10
+courant = uval*dt/δx +  vval*dt/δy
+
 
 ## Velocity Field and IC -------------------------------
 case     = 3
 
-#u = [1e3*cos(pi*y/Ly) for x in xgrid, y in ygrid, t in t:ts_max]
-u = [1*sin(2*pi*t/ts_max) for x in xgrid, y in ygrid, t in 1:ts_max]
 
-v = [-1*sin(2*pi*t/ts_max) for x in xgrid, y in ygrid, t in 1:ts_max]
+
+
+#u = [1e3*cos(pi*y/Ly) for x in xgrid, y in ygrid, t in t:ts_max]
+#u = [uval*sin(2*pi*t/ts_max)*cos(2*pi*y/Ly) for x in xgrid, y in ygrid, t in 1:ts_max]
+u = [-uval*cos(2*pi*y/Ly)*sin(2*pi*t/ts_max)  for x in xgrid, y in ygrid, t in 1:ts_max]
+v = [vval*cos(2*pi*x/Lx)*sin(2*pi*t/ts_max) for x in xgrid, y in ygrid, t in 1:ts_max]
+#v = [vval*sin(2*pi*t/ts_max)*cos(2*pi*x/Lx)*sin(2*pi*t/ts_max) for x in xgrid, y in ygrid, t in 1:ts_max]
+
+#u =  [-uval*sin(pi*x/Lx)*cos(2*pi*y/Ly)*sin(2*pi*t/ts_max) for x in xgrid, y in ygrid, t in 1:ts_max]
+#v =  [vval*sin(2*pi*x/(Lx))*cos(pi*y/Ly)*sin(2*pi*t/ts_max) for x in xgrid, y in ygrid, t in 1:ts_max]
 
 # Sinusoidal
-if case == 1
-
-        T0 = [5*sin(pi*y/Ly) + 5*sin(pi*x/Lx) for x in mx, y in my]
+#if case == 2
+        #T0 = [0 for x in mx, y in my]
+        #T0 = [10*sin(pi*y/Ly) + 5*sin(pi*x/Lx) for x in mx, y in my]
 # Static Box
-elseif case == 2
+if case == 1 || case == 2
         xmask = xmax/2-5 .<  mx .< xmax/2+5
         ymask = ymax/2-5 .<  my .< ymax/2+5
         mask = [x+y for x in xmask, y in ymask]
         mask = mask .>= 2
-        T0 = ones(Float64,xmax,ymax)*5 .* mask
+        T0 = ones(Float64,xmax,ymax)*10 .* mask
         #T0[T0 .< 2] .= 0
-elseif case == 3
+elseif case == 4
         T0 = [0 for x in mx, y in my]
+elseif case == 3
+        T0 = [10-10*(y/Ly) for x in mx, y in my]
 end
 
 
-
-wcpts,wcuv = ocnmod.quiverprep_2d(xgrid,ygrid,u[:,:,t],v[:,:,t],2)
+t = ts_max
+wcpts,wcuv = ocnmod.quiverprep_2d(xgrid,ygrid,u[:,:,t],v[:,:,t],0.5)
 pwc = heatmap(mx,my,T0',
         seriescolor=:dense,
         clims=(0,12))
-pwc=Plots.quiver!(wcpts,quiver=(wcuv),
+pwc=Plots.quiver(wcpts,quiver=(wcuv),
         linecolor=:black,
         title="Velocity Field",
         ylims=(0,ymax),
@@ -98,7 +113,7 @@ xmask = xmax/2-5 .<  mx .< xmax/2+5
 ymask = ymax/2-5 .<  my .< ymax/2+5
 mask = [x+y for x in xmask, y in ymask]
 mask = mask .>= 2
-S = Float64[1 for x in mx, y in my, t in 1:ts_max]
+#S = Float64[5 for x in mx, y in my, t in 1:ts_max]
 #S = Float64[1 + sin(pi*y/Ly)*sin(pi*x/Lx)*sin(2*pi*t/ts_max) for x in mx, y in my, t in 1:ts_max]
 #S .*= mask #[S[:,:,t] .* mask for t in 1:ts_max]
 ## Boundary Conditions
@@ -107,22 +122,43 @@ S = Float64[1 for x in mx, y in my, t in 1:ts_max]
 # 1 = Dirichlet, 2 = Neumann, 3 = Periodic
 
 WBC = 1
-wb_val = [y/y*0 for y in my, t in 1:ts_max]#[y/y for y in mx]
+if case == 3
+        wb_val = [10-y/Ly*10 for y in my, t in 1:ts_max]
+elseif case == 2
+        wb_val = [10*sin(2*pi*t/ts_max) for y in my, t in 1:ts_max]
+else
+        wb_val = [y/y*0 for y in my, t in 1:ts_max]#[y/y for y in mx]
 #wb_val = [5*sin(2*pi*t/ts_max) for y in my, t in 1:ts_max]
+end
 # Eastern
 EBC = 1
-eb_val = [y/y*0 for y in my, t in 1:ts_max]#[y/y for y in my]
+if case == 3
+        eb_val = [10-y/Ly*10 for y in my, t in 1:ts_max]
+else
+        eb_val = [y/y*0 for y in my, t in 1:ts_max]
+end
 
 # North
 NBC = 1
-nb_val = [x/x*0 for x in mx, t in 1:ts_max] #[sin(3*(x/Lx*pi)) for x in mx]
-#nb_val = [5*sin(2*pi*t/ts_max) for x in mx, t in 1:ts_max]
+if case == 3
+        nb_val = [0 for x in mx, t in 1:ts_max]
+else
 
+        nb_val = [x/x*0 for x in mx, t in 1:ts_max] #[sin(3*(x/Lx*pi)) for x in mx]
+        #nb_val = [5*sin(2*pi*t/ts_max) for x in mx, t in 1:ts_max]
+end
 # South
 SBC = 1
-sb_val = [x/x*0 for x in mx, t in 1:ts_max]#[sin(3*(x/Lx*pi)) for x in mx]
+if case == 3
+        sb_val = [10 for x in mx, t in 1:ts_max]
+else
 
-courant =
+        #sb_val = [x/x*0 for x in mx, t in 1:ts_max] #[sin(3*(x/Lx*pi)) for x in mx]
+        sb_val = [x/x*0 for x in mx, t in 1:ts_max]#[sin(3*(x/Lx*pi)) for x in mx]
+end
+
+
+#courant =
 ## Run the script
 # Set periodic boundary options DO NOT EDIT
 #___________________________________________
@@ -204,24 +240,63 @@ elapsed = time() - allstart
 
 
 anim3 = @animate for t ∈ 1:ts_max
-        wcpts,wcuv = ocnmod.quiverprep_2d(xgrid,ygrid,u[:,:,t],v[:,:,t],2)
-
-
-        c = heatmap(mx,my,temps[:,:,t]',
+        wcpts,wcuv = ocnmod.quiverprep_2d(xgrid,ygrid,u[:,:,t],v[:,:,t],0.5)
+        c = contourf(mx,my,temps[:,:,t]',
                 clabels=true,
                 #levels=[-1:0.1:1;],
                 clims=(0,10),
-                title="Temp; t="*string(t),
+                title="Temperature (degC); t="*string(t)*"s",
                 xlabel="x (meters)",
                 ylabel="y (meters)",
-                fillcolor=:dense
+                fillcolor=:dense,
+                dpi=200
                 )
         pwc=Plots.quiver!(wcpts,quiver=(wcuv),
                 linecolor=:black,
-                title="Velocity Field",
+                #title="Velocity Field",
                 ylims=(0,ymax),
-                xlims=(0,xmax),
-                xlabel="Zonal (m)",
-                ylabel="Meridional (m)")
+                xlims=(0,xmax))
 end
-gif(anim3,"HW5_TempAdv_test.gif",fps=5)
+gif(anim3,"HW5_Temperature Advection_case"*string(case)*".gif",fps=10)
+
+
+
+# Static Plot
+
+l = @layout[a b; c d]
+
+        t = 1
+        wcpts,wcuv = ocnmod.quiverprep_2d(xgrid,ygrid,u[:,:,t],v[:,:,t],0.5)
+        a = contourf(mx,my,temps[:,:,t]',
+                clabels=true,
+                #levels=[-1:0.1:1;],
+                clims=(0,10),
+                title="t="*string(t)*"s",
+                xlabel="x (meters)",
+                ylabel="y (meters)",
+                fillcolor=:dense,
+                dpi=200
+                )
+        pwc=Plots.quiver!(wcpts,quiver=(wcuv),
+                linecolor=:black,
+                #title="Velocity Field",
+                ylims=(0,ymax),
+                xlims=(0,xmax))
+
+        t = 1
+        wcpts,wcuv = ocnmod.quiverprep_2d(xgrid,ygrid,u[:,:,t],v[:,:,t],0.5)
+        a = contourf(mx,my,temps[:,:,t]',
+                clabels=true,
+                #levels=[-1:0.1:1;],
+                clims=(0,10),
+                title="t="*string(t)*"s",
+                xlabel="x (meters)",
+                ylabel="y (meters)",
+                fillcolor=:dense,
+                dpi=200
+                )
+        pwc=Plots.quiver!(wcpts,quiver=(wcuv),
+                linecolor=:black,
+                #title="Velocity Field",
+                ylims=(0,ymax),
+                xlims=(0,xmax))
