@@ -1343,7 +1343,7 @@ module ocnmod
         # For forward differencing, loop(1:n-1)
         if method == 1
             istart = 1
-            imax_new = imax-1
+            imax_new = imax
             isize  = imax_new
         # For backward differencing, loop(2:n)
         elseif method == 2
@@ -1590,7 +1590,7 @@ module ocnmod
         dψ/dy = -u
 
     Recover the velocity and wind field from the input ψ.
-    Use central differencing.
+    Uses Forward Differencing.
 
     Dependencies: ddx_1d
 
@@ -1604,22 +1604,26 @@ module ocnmod
 
 
     """
-    function psi2uv(ψ,Δx,Δy,x,y,dropdim)
+    function psi2uv(ψ,Δx,Δy,x,y,dropdim,nb_val,sb_val,eb_val,wb_val)
+
         xmax = length(x)
         ymax = length(y)
 
-        # Calculate dψ/dx along each row
-        v = zeros(xmax-2,ymax)
+        # Interpolate ψ at boundaries. "i" here refers to value of boundary on the bottom or left of cell
+        psi_u,psi_v = ocnmod.calc_edgeval_1D(ψ,nb_val,sb_val,eb_val,wb_val)
+
+        # Calculate dψ/dx along eastern/western faces, using forward differecing
+        v = zeros(xmax,ymax)
         for j = 1:ymax
-            ψj = ψ[:,j]
-            v[:,j],~,~ = ocnmod.ddx_1d(ψj,Δx,3)
+            ψj = psi_u[:,j]
+            v[:,j],~,~ = ocnmod.ddx_1d(ψj,Δx,1)
         end
 
         # Calculate dψ/dy along each column
-        u = zeros(xmax,ymax-2)
+        u = zeros(xmax,ymax)
         for i = 1:xmax
-            ψi = ψ[i,:]
-            u[i,:],~,~ = ddx_1d(ψi,Δy,3)
+            ψi = psi_v[i,:]
+            u[i,:],~,~ = ocnmod.ddx_1d(ψi,Δy,1)
         end
         u *= -1
 
@@ -1627,10 +1631,15 @@ module ocnmod
         if dropdim == 1
             u = u[2:end-1,:]
             v = v[:,2:end-1]
+
+            # Do the same to the input grids
+            nx = x[2:end-1]
+            ny = y[2:end-1]
+        else
+            nx = x
+            ny = y
         end
-        # Do the same to the input grids
-        nx = x[2:end-1]
-        ny = y[2:end-1]
+
 
         return u,v,nx,ny
     end
@@ -2160,30 +2169,27 @@ module ocnmod
         # Assign Boundary Values
 
         ## Southern Boundary
-        c_v[1,:]   = sb_val;
+        c_v[:,1]   = sb_val;
 
         ## Northern Boundary
-        c_v[end,:] = nb_val;
+        c_v[:,end] = nb_val;
 
         # Eastern Boundary
-        c_u[:,end] = eb_val;
+        c_u[end,:] = eb_val;
 
         # Western Boundary
-        c_u[:,1] = wb_val;
+        c_u[1,:] = wb_val;
 
         # Compute interior points using linear interpolation
         for j = 1:ymax
-            for i = 1:xmax
-                ip1 = i+1
-                jp1 = j+1
-                # Skip ymax for v (already assigned by BC)
-                if j ~= ymax
-                    c_v[i,j] = (c[i,j]+c[i,jp1])/ 2
-                # Skip xmax for u (already assigned by BC)
-                elseif i ~= xmax
-                    c_u[i,j] = (c[i,j]+c[ip1,j])/ 2
-                end
+            for i = 2:xmax-1
+                c_u[i,j] = (c[i,j]+c[i+1,j])/ 2
+            end
+        end
 
+        for i = 1:xmax
+            for j = 2:ymax-1
+                c_v[i,j] = (c[i,j]+c[i,j+1])/ 2
             end
         end
 

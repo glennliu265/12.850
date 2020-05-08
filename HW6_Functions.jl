@@ -209,8 +209,8 @@ chk_per[4] = wper
 # Preallocate
 vort_t = zeros(Float64,xmax,ymax,ts_max)
 ψ_t = zeros(Float64,xmax,ymax,ts_max)
-ut = zeros(Float64,xmax-2,ymax-2,ts_max)
-vt = zeros(Float64,xmax-2,ymax-2,ts_max)
+ut = zeros(Float64,xmax,ymax,ts_max)
+vt = zeros(Float64,xmax,ymax,ts_max)
 
 allstart=time()
 for t = 1:ts_max
@@ -259,13 +259,15 @@ for t = 1:ts_max
 
         # Solve for streamfunction, using vorticity as the input (functionized)
         S_psi = vort_t[:,:,t]
+
         ψ_t[:,:,t],~,~ =ocnmod.invPV_2d(S_psi,
                           x_f,y_f,x_c,y_c,x_c0,y_c0,
                           NBC,nb_val,SBC,sb_val,EBC,eb_val,WBC,wb_val,
                           chk_per,
                           ug,tol,max_iter)
         # Solve for uv
-        ut[:,:,t],vt[:,:,t],~,~=ocnmod.psi2uv(ψ_t[:,:,t],x_f,y_f,mx,my,1)
+        ut[:,:,t],vt[:,:,t],~,~=ocnmod.psi2uv(ψ_t[:,:,t],x_f,y_f,mx,my,
+                                    0,nb_val,sb_val,eb_val,wb_val)
 
 
 end
@@ -284,6 +286,7 @@ elseif casen == 2
 elseif casen == 3
     qscale = 1e3
 end
+qscale = 5e6
 x_u = mx[2:end-1]
 y_v = my[2:end-1]
 
@@ -297,16 +300,15 @@ plotsf = ψ_t/ψ0
 
 anim3 = @animate for t ∈ 1:ts_max
         l = @layout[a b]
-
+        #
         # Prepare wind stress quicvers
         wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
 
         # Make quivers
         u = ut[:,:,t]
         v = vt[:,:,t]
-        pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,qscale)
+        pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
 
-        #c = Plots.contourf(mx,my,vort_t[:,:,t]'/findmax(abs.(vort_t))[1],
         c = Plots.contourf(mx,my,plotvort[:,:,t]',
                 clabels=true,
                 levels=[-1:0.1:1;],
@@ -340,357 +342,4 @@ anim3 = @animate for t ∈ 1:ts_max
 
         Plots.plot(c,h,layout = l)
 end
-gif(anim3,"HW4_Vort_Psi_Case"*string(casen)*"e0_2dtest.gif",fps=5)
-
-
-## save ata
-#JLD.save("/Users/gyl/Case2_10m.jld","sf10",ψ_t,"u10",ut,"v10",vt,"vort10",vort_t)
-
-
-
-
-
-
-### Figure Library
-# # ---------------------------
-# # Fig 1. Timescale vs Diffusivity Plots
-# # ---------------------------
-    #
-    # kp = [10.0^x for x in (-2):1:5]
-    # tp8 = 1e8 ./ kp
-    # tp14 = 1e14 ./ kp
-    # #tp4 = 1e4 ./ kp
-#     tkplot = Plots.plot(kp,tp8,
-#                 title = "Timescale vs Diffusivity; Domain = 1E8 m2",
-#                 label = "Time Scale",
-#                 xaxis = :log,
-#                 yaxis = :log,
-#                 xtick = (kp),
-#                 ylabel= "Timescale (s)",
-#                 xlabel="Diffusivity m2/s",
-#                 lw    = 2.5,
-#                 lc    = :black
-#                 )
-#     tkplot = hline!([3.145e8],label="Decadal",ls=:dot,lw=2.5,lc=:purple)
-#     tkplot = hline!([3.145e7],label="Annual",ls=:dot,lw=2.5,lc=:red)
-#     tkplot = hline!([2.592e6],label="Monthly",ls=:dot,lw=2.5,lc=:blue)
-#     tkplot = hline!([8.840e4],label="Daily",lw=2.5,ls=:dot,lc=:green)
-#     Plots.savefig(tkplot,"HW4_TimeScalevsDiffusivity.png")
-
-# # ---------------------------------------------------------------------
-# #  F2. Plot Wind Stress Curl Case 1
-# # ---------------------------------------------------------------------
-#     l = @layout[a b]
-#     # Plot Wind Stress
-#     qscale = 5e3
-#
-#     t = 1
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(abs.(curlTy-curlTx))[1]
-#     #curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     p1=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     p1=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     t = 36
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     p2=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     p2=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     # Plot Wind Stress Curl
-#     pws = Plots.plot(p1,p2,layout=l)
-#
-#     Plots.savefig(pws,"HW4_WindStressPlotCase"*string(casen)*".svg")
-
-
-# ---------------------------------------------------------------------
-#  F3. Plot Wind Stress Curl (Case 2)
-# ---------------------------------------------------------------------
-#     l = @layout[a b]
-#     # Plot Wind Stress
-#     qscale = 5e3
-#
-#     t = 1
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(abs.(curlTy-curlTx))[1]
-#     #curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     p1=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     p1=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     t = 18
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     p2=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     p2=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     # Plot Wind Stress Curl
-#     pws = Plots.plot(p1,p2,layout=l)
-#
-#     Plots.savefig(pws,"HW4_WindStressPlot.svg")
-
-
-# # ---------------------------------------------------------------------
-# #  F4. Plot Wind Stress Curl Case 3
-# # ---------------------------------------------------------------------
-#     l = @layout[a b ; c d]
-#     # Plot Wind Stress
-#     qscale = 5e3
-#
-#     t = 1
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(abs.(curlTy-curlTx))[1]
-#     #curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     pa=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     pa=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     t = 9
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(abs.(curlTy-curlTx))[1]
-#     #curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     pb=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     pb=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     t = 28
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(abs.(curlTy-curlTx))[1]
-#     #curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     pc=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     pc=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     t = 36
-#     plotcurl = curlTy[:,:,t]-curlTx[:,:,t]
-#     curl0 = findmax(plotcurl)[1]
-#     plotcurl = plotcurl / curl0
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-#     pd=Plots.heatmap(mx,my,plotcurl',seriescolor=:balance)
-#     pd=Plots.quiver!(wspts,quiver=(wsuv),
-#         title="Tau @ t="*string(t)*"; curl0="*@sprintf("%.2e",curl0),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         clims=(-1,1),
-#         lc="black",
-#         ylabel="y (meters)",
-#         xlabel="x (meters)"
-#         )
-#
-#     # Plot Wind Stress Curl
-#     pws = Plots.plot(pa,pb,pc,pd,layout=l)
-#
-#     Plots.savefig(pws,"HW4_WindStressPlotCase"*string(casen)*".svg")
-
-
-# # ---------------------------
-# # Fig 3. Comparison of Iterative Methods
-# # ---------------------------
-    #
-    # p1 = Plots.plot(rSOR,
-    #         xaxis = :log,
-    #         yaxis = :log,
-    # #        title="Convergence Speed for Iterative Methods",
-    #         title="Comparison of Iterative Methods",
-    #         xlabel="Iterations to Convergence",
-    #         ylabel="Residual",
-    #         lw = 2.5,
-    #         label="SOR",
-    #         )
-    # p1 = Plots.plot!(rCGK,
-    #         lw = 2.5,
-    #         label="CGK",
-    #         )
-    # Plots.savefig(p1,"HW4_Convergence_SpeedTest2_10m.svg")
-
-#
-# #
-# # Figure: Case 2 Difference
-# #
-#
-#
-#     qscale = 5e3
-#     # Determine maximum values
-#     ζ0 = findmax(abs.(vort_t))[1]
-#     plotvort = vort_t/ζ0
-#
-#     # Determine maximum values
-#     ψ0     = findmax(abs.(ψ_t))[1]
-#     plotsf = ψ_t/ψ0
-#
-#     # Take Differences for plotting
-#     pvdiff = plotvort[:,:,18] - plotvort[:,:,1]
-#     sfdiff = plotsf[:,:,18]   - plotsf[:,:,1]
-#     dtx = dτx[:,:,18] - dτx[:,:,1]
-#     dty = dτy[:,:,18] - dτy[:,:,1]
-#     u = ut[:,:,18] - ut[:,:,1]
-#     v = vt[:,:,18] - vt[:,:,1]
-#
-#     # Prepare wind stress quicvers
-#     wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dtx,dty,qscale)
-#     pts,uv = ocnmod.quiverprep_2d(x_u,y_v,u,v,qscale)
-#
-#      l = @layout[a b]
-#     c = Plots.contourf(mx,my,pvdiff',
-#             clabels=true,
-#             levels=[-.5:0.1:.5;],
-#             clims=(-0.5,0.5),
-#             title="Vorticity Difference (t = 1 to 18); z0="*@sprintf("%.2e",ζ0),
-#             xlabel="x (meters)",
-#             ylabel="y (meters)",
-#             fillcolor=:balance
-#             )
-#     c=Plots.quiver!(wspts,quiver=(wsuv),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         lc="black",
-#         )
-#
-#     h = Plots.contourf(mx,my,sfdiff',
-#             clabels=true,
-#             levels=[-.5:0.1:.5;],
-#             clims=(-0.5,0.5),
-#             title="Psi difference (t = 1 to 18); psi0="*@sprintf("%.2e",ψ0),
-#             xlabel="x (meters)",
-#             ylabel="y (meters)",
-#             fillcolor=:balance
-#             )
-#     h = Plots.quiver!(pts,quiver=(uv),
-#         ylims=(0,Ly),
-#         xlims=(0,Lx),
-#         lc="black"
-#         )
-#
-#     dp2 =Plots.plot(c,h,layout = l)
-# Plots.savefig(dp2,"HW4_Vort_Psi_Difference_Case"*string(casen)*".svg")
-
-
-
-
-
-#
-# Figure: Case 2 Testing K values
-#
-    # Run once with k = 10^2 (vortt2, psit2, etc)
-    # Run again with k = 10^0 (vort_t,psi_t,etc)
-
-    qscale = 5e3
-
-    vortd = vortt_2 - vort_t;
-    psid  = psit_2 - ψ_t;
-    utd   = ut2 - ut;
-    vtd   = vt2 - vt;
-
-
-    # Determine maximum values
-    ζ0 = findmax(abs.(vortd))[1]
-    plotvort = vortd/ζ0
-
-    # Determine maximum values
-    ψ0     = findmax(abs.(psid))[1]
-    plotsf = psid/ψ0
-
-    t = 18
-    # Prepare wind stress quicvers
-    wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dtx,dty,qscale)
-    pts,uv = ocnmod.quiverprep_2d(x_u,y_v,utd[:,:,t],vtd[:,:,t],qscale)
-
-     l = @layout[a b]
-    c = Plots.contourf(mx,my,plotvort[:,:,t]',
-            clabels=true,
-            levels=[-1:0.1:1;],
-            clims=(-1,1),
-            title="Vorticity(2 - 0); z0="*@sprintf("%.2e",ζ0),
-            xlabel="x (meters)",
-            ylabel="y (meters)",
-            fillcolor=:balance
-            )
-    c=Plots.quiver!(wspts,quiver=(wsuv),
-        ylims=(0,Ly),
-        xlims=(0,Lx),
-        lc="black",
-        )
-
-    h = Plots.contourf(mx,my,plotsf[:,:,t]',
-            clabels=true,
-            levels=[-1:0.1:1;],
-            clims=(-1,1),
-            title="Psi (2 - 0); psi0="*@sprintf("%.2e",ψ0),
-            xlabel="x (meters)",
-            ylabel="y (meters)",
-            fillcolor=:balance
-            )
-    h = Plots.quiver!(pts,quiver=(uv),
-        ylims=(0,Ly),
-        xlims=(0,Lx),
-        lc="black"
-        )
-
-    dp2 =Plots.plot(c,h,layout = l)
-Plots.savefig(dp2,"HW4_Vort_Psi_Difference_Case"*string(casen)*".svg")
+gif(anim3,"HW6_Case"*string(casen)*"e0_2dtest.gif",fps=5)
