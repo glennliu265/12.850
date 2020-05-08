@@ -2127,8 +2127,67 @@ module ocnmod
         return C,B
     end
 
+    """
+        calc_edgeval_1D
+        Calculate the edge values, given the values at the cell center (c[i,j])
+        and the boundary values
+        Uses a linear interpolation and assumes a uniform grid.
+        ( value is the average of the two adjacent sides)
+        Can add feature later to do quadratic and for varying cell width ???
+
+        Inputs
+            1) c      - Array[i,j]: tracer values at cell center
+            2) nb_val - value along the northern boundary
+            3) sb_val - value along the southern boundary
+            4) eb_val - value along eastern boundary
+            5) wb_val - value along western boundary
+
+        Output
+            1) c_u    - value along the western/eastern faces of the cell
+            2) c_v    - value along the northern ands outhern edges of the cell
 
 
+    """
+    function calc_edgeval_1D(c,nb_val,sb_val,eb_val,wb_val)
 
+        xmax = size(c,1)
+        ymax = size(c,2)
+
+        # Preallocate for variable values along u and v grid
+        c_u = zeros(Float64,xmax+1,ymax)
+        c_v = zeros(Float64,xmax,ymax+1)
+
+        # Assign Boundary Values
+
+        ## Southern Boundary
+        c_v[1,:]   = sb_val;
+
+        ## Northern Boundary
+        c_v[end,:] = nb_val;
+
+        # Eastern Boundary
+        c_u[:,end] = eb_val;
+
+        # Western Boundary
+        c_u[:,1] = wb_val;
+
+        # Compute interior points using linear interpolation
+        for j = 1:ymax
+            for i = 1:xmax
+                ip1 = i+1
+                jp1 = j+1
+                # Skip ymax for v (already assigned by BC)
+                if j ~= ymax
+                    c_v[i,j] = (c[i,j]+c[i,jp1])/ 2
+                # Skip xmax for u (already assigned by BC)
+                elseif i ~= xmax
+                    c_u[i,j] = (c[i,j]+c[ip1,j])/ 2
+                end
+
+            end
+        end
+
+        return c_u, c_v
+    end
 # Module End
 end
