@@ -1509,42 +1509,31 @@ module ocnmod
     """
     function invPV_2d(ζ,
                       x_f,y_f,x_c,y_c,x_c0,y_c0,
-                      κx,κy,κx0,κy0,
                       NBC,nb_val,SBC,sb_val,EBC,eb_val,WBC,wb_val,
+                      chk_per,
                       ug,tol,max_iter)
 
-        # Get # of cells along each dimension
-        xmax = size(x_f,2)
-        ymax = size(y_f,2)
+        # Get # of cells along each dimension (from ug)
+        xmax = size(ug,1)
+        ymax = size(ug,2)
 
-        # Create chk_per vector based on BCs
-        # [N, S, E, W]
-        chk_per = zeros(Int,4)
-        if NBC == 3
-            chk_per[1] = 1
-        end
-        if SBC == 3
-            chk_per[2] = 1
-        end
-        if EBC == 3
-            chk_per[3] = 1
-        end
-        if WBC == 3
-            chk_per[4] = 1
-        end
+        # Set diffusion to 1
+        K    = ones(xmax,ymax)
+        K0   = 1
 
         # Calculate vectors to store coefficients for iteration
-        Cx,Bx = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
-        Cy,By = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
+        Cx,Bx = ocnmod.CD_diffu_calc_coeff(x_f,x_c,K,EBC,eb_val,WBC,wb_val,x_c0,K0)
+        Cy,By = ocnmod.CD_diffu_calc_coeff(y_f',y_c',K',NBC,nb_val,SBC,sb_val,y_c0,K0)
+
+        # Permute dimensions
+        Cyp = permutedims(Cy,[1,3,2])
+        Byp = permutedims(By,[2,1])
 
         # Modify source term with BCs
-        ζ[1,:]    -= Bx[1,:] # South BC
-        ζ[xmax,:] -= Bx[2,:] # North BC
-        ζ[:,1]    -= By[1,:] # West BC
-        ζ[:,ymax] -= By[2,:] # East BC
+        ζ    .-= (Bx+Byp)
 
         # Use Conjugate Gradient Krylov to solve for the streamfunction
-        ψ,itcnt,r = ocnmod.cgk_2d(Cx,Cy,ζ,ug,chk_per,tol,max_iter)
+        ψ,itcnt,r = ocnmod.cgk_2d(Cx,Cyp,ζ,ug,chk_per,tol,max_iter,2)
 
         return ψ,itcnt,r
     end
@@ -1993,6 +1982,151 @@ module ocnmod
 
         return C,B
     end
+
+
+    """
+    ip1,im1,ip2,im2 = idxper(i,imax)
+    Function for quick periodic indexing
+
+    """
+    function idxper(i,imax)
+
+
+        # Assume everything is normal...
+        ip1 = i+1
+        ip2 = i+2
+
+        im1 = i-1
+        im2 = i-2
+
+        if i == 1
+            im1 = imax
+            im2 = imax-1
+        elseif i == 2
+            im2 = imax
+        elseif i == imax-1
+            ip2 = 1
+        elseif i == imax
+            ip1 = 1
+            ip2 = 2
+        end
+
+        return ip1,im1,ip2,im2
+    end
+
+    """
+    CD_diffu_calc_coeff
+
+    Similar to FD_calc_coeff_2D but now supporting multiple dimensions
+    in diffusivity coefficient
+
+    """
+
+    function CD_diffu_calc_coeff(x_f,x_c, # Cell geometry/indices
+        κ,                               # κ [i,j] and Source/Sink Terms
+        BC_top,val_top,                  # Bottom BCs
+        BC_bot,val_bot,                  # Top BCs
+        x_c0,κ0)                         # bottom diffusivity and midpoint dist
+
+        # Take dimensions from κ
+        xmax = size(κ,1)
+        ymax = size(κ,2)
+
+        # Preallocate...
+        # C (matrix of coefficients) where
+        # 1st dim, 1 = im1, 2 = i, 3 = ip1
+        C = zeros(Float64,3,xmax,ymax)
+
+        # B (forcing modification) where
+        # 1st dim, 1=bot,2=top,
+        B = zeros(Float64,xmax,ymax)
+
+        for i = 1:xmax
+
+            # Get periodic indices for i
+            ip1,im1,~,~ = idxper(i,xmax)
+
+            for j = 1:ymax
+
+                # Get periodic indices for j
+                jp1,jm1,~,~ = idxper(j,ymax)
+
+
+                # Get the Diffusivity Coefficient and grid spacing
+                Km1  = κ[im1,j]
+                K    = κ[i,j]
+                xf = x_f[i]
+                #xf   = x_f[i,j]
+                #xc   = x_c[i,j]
+                xc = x_c[i]
+                xcm1 = x_c[im1]
+                #xcm1 = x_c[im1,j]
+
+                # Assume periodic first
+                C[1,i,j] = Km1 / (xf*xcm1)
+                C[3,i,j] = K   / (xf*xc)
+                C[2,i,j] = -1*(C[1,i,j]+C[3,i,j])
+
+                # Bottom Boundaries (assuming both im1 and im2 draw from same pool)
+                if i == 1
+
+                    # Remove im1 coefficient (move to forcing)
+                    C[1,i,j] = 0
+
+                    # Dirichlet BC
+                    if  BC_bot == 1
+
+                        # Compute Change to Source Term with BC (Prescribed Temp)
+                        B[i,j] = val_bot[j] * 2 * κ0 / (xf * x_c0)
+
+                        # Change to center coefficient
+                        C[2,i,j] = -1 * (2*κ0/x_c0 + K/xc) / xf
+
+                    # Neumann BC
+                    elseif BC_bot == 2
+
+                        # Change to bottom forcing
+                        B[i,j]     = val_bot[j]/xf
+
+                        # Alter Interior Cell
+                        C[2,i,j]   = -1 * K/(xf*xc)
+
+                    end
+                    # End Loop for bottom conditionals
+                end
+
+                if i == xmax
+
+                    # Set ip1 cell to zero (move to forcing)
+                    C[3,i,j] = 0
+
+                    if BC_top == 1
+
+                        # Top forcing dirichlet
+                        B[i,j]     = val_top[j] * (2*K/(xf*xc))
+
+                        # Modify central coefficient
+                        C[2,i,j]   = -1* (2*K/xc + Km1/xcm1) / xf
+
+
+                    elseif BC_top == 2
+
+                        # Top Neumann
+                        B[i,j]     = val_top[j] / xf
+
+                        # Modify Central Coefficient
+                        C[2,i,j]   = -Km1 / (xf*xcm1)
+                    end
+
+                    # End loop for top conditions
+                end
+                # End loop for j
+            end
+            #End loop for i
+        end
+        return C,B
+    end
+
 
 
 

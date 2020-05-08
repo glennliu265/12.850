@@ -6,6 +6,12 @@ using JLD
 
 include("AllFunctions12850.jl")
 
+
+## Choice Parameters to toggle
+K = 1e2 # Horizontal Eddy Diffusivity (for Vorticity)
+
+
+
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
 #xgrid = [0:1e5:5e6;]
@@ -38,19 +44,16 @@ y_c       = ones(Int8,1,ymax)*δy
 x_c0      = δx
 y_c0      = δy
 
-## Set Diffusivity Parameter -------------------------------
+## Set Diffusivity Parameter
 # For vorticity
-κx        = ones(Float64,1,xmax) .* 1e2
-κy        = ones(Float64,1,ymax) .* 1e2
+κx        = Float64[K for x in mx, y in my]
+κy        = Float64[K for x in mx, y in my]
 κx0       = κx[1]
 κy0       = κy[1]
 
-Kx2D = Float64[1e2 for x in mx, y in my]
-Ky2D = Float64[1e2 for x in mx, y in my]
-
 # For streamfunction, set diffusivity to 1
-κxp        = ones(Float64,1,xmax)
-κyp        = ones(Float64,1,ymax)
+κxp        = ones(Float64,1,xmax,ymax)
+κyp        = ones(Float64,1,xmax,ymax)
 κxp0       = κxp[1]
 κyp0       = κyp[1]
 
@@ -80,28 +83,6 @@ H  = 1000 #m
 
 ## Case Setting
 casen = 2
-
-# Set the wind directions
-# Zonal Wind
-
-# ------------------------------------------------------------
-# Testing different approximation schemes for first derivative
-# ------------------------------------------------------------
-    # τx = [ -τ0*cos(pi*y/Ly) for y in my]
-    # τxy = [ τ0*pi/Ly*sin(pi*y/Ly) for y in my]
-    # a1,b1,c=ocnmod.ddx_1d(τx,y_f,1)
-    # a2,b2,c=ocnmod.ddx_1d(τx,y_f,2)
-    # a3,b3,c=ocnmod.ddx_1d(τx,y_f,3)
-    # plot(b1,a1,label="Fw")
-    # plot!(b2,a2,label="Bw")
-    # plot!(b3,a3,label="Cen")
-    # plot!(τxy,label="Ana")
-    # It seems that the 3rd method works the best (but lose the ends)
-
-
-# Approximate the x and y derivatives of the wind directions
-# Note: Just repeat the first elemtent for now
-#dτx_dy = ocnmod.ddx_1d(vcat(τx[1],τx),y_f)
 
 # Create Zonal Wind Stress Terms
 xedge = [0:δx:(Lx+2δx);]
@@ -149,37 +130,6 @@ end
     S = 1/(ρ0*H) * (curlTy - curlTx)
 
 
-# # ---------------------------------------------------------------------
-# # Plot Wind Stress Animations
-# # ---------------------------------------------------------------------
-#     aniwind = @animate for t ∈ 1:ftmax
-#         l = @layout[a b]
-#         # Plot Wind Stress
-#         qscale = 1e2
-#         wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-# #        pws=Plots.contourf(xedge,yedge,dτx[:,:,t]',seriescolor=:balance)
-#         pws=Plots.quiver(wspts,quiver=(wsuv),
-#             title="Zonal Wind Stress @ t="*string(t),
-#             ylims=(0,Ly),
-#             xlims=(0,Lx),
-#             lc="black",
-#             )
-#
-#         # Plot Wind Stress Curl
-#         qscale = 1e3
-#         wcpts,wcuv = ocnmod.quiverprep_2d(mx,my,curlTx[:,:,t],curlTy[:,:,t],qscale)
-#         pwc=Plots.contourf(mx,my,curlTy[:,:,t]'-curlTx[:,:,t]',seriescolor=:balance)
-#         pwc=Plots.quiver!(wcpts,quiver=(wcuv),
-#             title = "Wind Stress Curl @ t="*string(t),
-#             ylims=(0,Ly),
-#             xlims=(0,Lx),
-#             lc="black"
-#             )
-#         Plots.plot(pws,pwc,layout=l)
-#     end
-#     gif(aniwind,"HW4_WindStress_Case"*string(casen)*".gif",fps=2)
-
-
 # -----------------------------------
 #  Visualize Forcing Term, Quiver plot on wind curl
 # -----------------------------------
@@ -213,8 +163,6 @@ end
 
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
-# West
-# 1 = Dirichlet, 2 = Neumann, 3 = Periodic
 
 WBC = 1
 wb_val = [y/y*0 for y in my]#[y/y for y in mx]
@@ -235,27 +183,27 @@ sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
 ## Run the script
 # Set periodic boundary options DO NOT EDIT
 #___________________________________________
-        chk_per = zeros(Int,4)
-        wper =0
-        eper =0
-        sper =0
-        nper =0
-        if WBC == 3
-            wper = 1
-        end
-        if EBC == 3
-            eper = 1
-        end
-        if NBC == 1
-            nper = 1
-        end
-        if SBC == 1
-            sper = 1
-        end
-        chk_per[1] = nper
-        chk_per[2] = sper
-        chk_per[3] = eper
-        chk_per[4] = wper
+chk_per = zeros(Int,4)
+wper =0
+eper =0
+sper =0
+nper =0
+if WBC == 3
+    wper = 1
+end
+if EBC == 3
+    eper = 1
+end
+if NBC == 1
+    nper = 1
+end
+if SBC == 1
+    sper = 1
+end
+chk_per[1] = nper
+chk_per[2] = sper
+chk_per[3] = eper
+chk_per[4] = wper
 
 
 # Preallocate
@@ -278,62 +226,43 @@ for t = 1:ts_max
         else
             nm = 1
         end
-        # loopstart = time()
-        # m = t%12
-        #
-        # # Get Next Month (for eqn L.H.S.)
-        # nm = m + 1
-
-        # # Set December month to 12
-        # if m == 0
-        #     m = 12
-        # end
 
         # Get Corresponding forcing term
         S0 = S[:,:,m]
         S1 = S[:,:,nm]
 
-        # Compute Coefficients and modifications to BCs
-        Cx0,Bx0 = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
-        Cy0,By0 = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
-        Cx1,Bx1 = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
-        Cy1,By1 = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κy,NBC,nb_val,SBC,sb_val,y_c0,κy0)
+        # Compute Diffusivity Coefficients
+        Cx0,Bx0 = ocnmod.CD_diffu_calc_coeff(x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cy0,By0 = ocnmod.CD_diffu_calc_coeff(y_f',y_c',κy',NBC,nb_val,SBC,sb_val,y_c0,κy0)
 
-        Cx0n,Bx0n = ocnmod.CD_diffu_calc_coeff(x_f,x_c,Kx2D,EBC,eb_val,WBC,wb_val,x_c0,κx0)
-        # Modify Boundary Conditions
-        S0[1,:]    -= Bx0[1,:] # South BC
-        S0[xmax,:] -= Bx0[2,:] # North BC
-        S0[:,1]    -= By0[1,:] # West BC
-        S0[:,ymax] -= By0[2,:] # East BC
-        S1[1,:]    -= Bx1[1,:] # South BC
-        S1[xmax,:] -= Bx1[2,:] # North BC
-        S1[:,1]    -= By1[1,:] # West BC
-        S1[:,ymax] -= By1[2,:] # East BC
+        Cx1,Bx1 = ocnmod.CD_diffu_calc_coeff(x_f,x_c,κx,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cy1,By1 = ocnmod.CD_diffu_calc_coeff(y_f',y_c',κy',NBC,nb_val,SBC,sb_val,y_c0,κy0)
+
+        # Permute dimensions
+        Cy0p = permutedims(Cy0,[1,3,2])
+        Cy1p = permutedims(Cy1,[1,3,2])
+        By0p = permutedims(By0,[2,1])
+        By1p = permutedims(By1,[2,1])
+
+
+        # Modify Forcing Term
+        S0 .-= (Bx0 + By0p)
+        S1 .-= (Bx1 + By1p)
 
         # Set up Crank Nicolson
         ug = zeros(Float64,xmax,ymax)
-        Ax,Ay,b = ocnmod.CN_make_matrix_2d(dt,θ,ug,Cx0,Cy0,Cx1,Cy1,S0,S1,1e5,chk_per,1)
+        Ax,Ay,b = ocnmod.CN_make_matrix_2d(dt,θ,ug,Cx0,Cy0p,Cx1,Cy1p,S0,S1,1e5,chk_per,2)
 
         #u_out,itcnt,rSOR,u_scrap,err_scrap,errmap = ocnmod.FD_itrsolve_2D(Ax,Ay,b,ug,tol,ω,method,wper,eper,sper,nper,max_iter,save_iter)
         #vort_t[:,:,t],itcnt2,rCGK = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter)
-        vort_t[:,:,t],~,~ = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter,1)
-
-        # Solving for streamfunction (first pass)
-        # S_psi = vort_t[:,:,t]
-        # Cxp,Bxp = ocnmod.FD_calc_coeff_2D(xmax,x_f,x_c,κxp,EBC,eb_val,WBC,wb_val,x_c0,κxp0)
-        # Cyp,Byp = ocnmod.FD_calc_coeff_2D(ymax,y_f,y_c,κyp,NBC,nb_val,SBC,sb_val,y_c0,κyp0)
-        # S_psi[1,:]    -= Bxp[1,:] # South BC
-        # S_psi[xmax,:] -= Bxp[2,:] # North BC
-        # S_psi[:,1]    -= Byp[1,:] # West BC
-        # S_psi[:,ymax] -= Byp[2,:] # East BC
-        # ψ_t[:,:,t],~,~ = ocnmod.cgk_2d(Cxp,Cyp,S_psi,ug,chk_per,tol,max_iter)
+        vort_t[:,:,t],itcnt,r = ocnmod.cgk_2d(Ax,Ay,b,ug,chk_per,tol,max_iter,2)
 
         # Solve for streamfunction, using vorticity as the input (functionized)
         S_psi = vort_t[:,:,t]
         ψ_t[:,:,t],~,~ =ocnmod.invPV_2d(S_psi,
                           x_f,y_f,x_c,y_c,x_c0,y_c0,
-                          κxp,κyp,κxp0,κyp0,
                           NBC,nb_val,SBC,sb_val,EBC,eb_val,WBC,wb_val,
+                          chk_per,
                           ug,tol,max_iter)
         # Solve for uv
         ut[:,:,t],vt[:,:,t],~,~=ocnmod.psi2uv(ψ_t[:,:,t],x_f,y_f,mx,my,1)
