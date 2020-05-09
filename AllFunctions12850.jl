@@ -995,7 +995,7 @@ module ocnmod
         u_out = u[1,:,:]
 
         elapsed = time()-start
-        @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
+        #@printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
         return u_out, itcnt, r, u_scrap, err_scrap, err_map
 
     end
@@ -1258,7 +1258,7 @@ module ocnmod
         if norm(r0) < tol
             x_out = x0
             push!(res,norm(r0))
-            @printf("\nGuess is already below tolerance with residual %.2e",norm(r0))
+            #@printf("\nGuess is already below tolerance with residual %.2e",norm(r0))
             return x_out,itcnt,res
         end
 
@@ -1301,7 +1301,7 @@ module ocnmod
 
         end
         elapsed = time()-start
-        @printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
+        #@printf("\nFinished %.2e iterations in %s",itcnt,elapsed)
         return x_out,itcnt,res
     end
 
