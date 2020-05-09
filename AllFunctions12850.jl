@@ -1443,14 +1443,20 @@ module ocnmod
         elseif ver ==2
             Cx[2,:,:] = Cx[2,:,:] .+ 1
             #Cy[2,:] = Cy[2,:] .+ 1
-            By[2,:,:] = By[2,:,:] .+ 1
+            #if θ != 0
+                By[2,:,:] = By[2,:,:] .+ 1
+            #end
             Cmx = Ax_2D(Cx,Cy,IC,chk_per,2)
+
             #Bx[2,:] = Bx[2,:] .+ 1
         end
 
         # Now combine terms
-
-        b     = Cmx + fr - fl # Bring Sl from left side
+        #if  θ != 0
+            b     = Cmx + fr - fl
+        #else
+            #b     = Cmx + fr
+        #end# Bring Sl from left side
 
         Ax     = Bx
         Ay     = By
@@ -1501,6 +1507,7 @@ module ocnmod
             20) ug       - [ixj] Array of initial guess for the value
             21) tol      - Minimum tolerance for the residual
             22) max_iter - Maximum number of interations permitted
+            23) method   - Choose method. 1 = SOR;2 = CGK
 
         Outputs
             1) ψ     - Streamfunction
@@ -1511,7 +1518,7 @@ module ocnmod
                       x_f,y_f,x_c,y_c,x_c0,y_c0,
                       NBC,nb_val,SBC,sb_val,EBC,eb_val,WBC,wb_val,
                       chk_per,
-                      ug,tol,max_iter)
+                      ug,tol,max_iter,method)
 
         # Get # of cells along each dimension (from ug)
         xmax = size(ug,1)
@@ -1531,9 +1538,13 @@ module ocnmod
 
         # Modify source term with BCs
         ζ    .-= (Bx+Byp)
-
-        # Use Conjugate Gradient Krylov to solve for the streamfunction
-        ψ,itcnt,r = ocnmod.cgk_2d(Cx,Cyp,ζ,ug,chk_per,tol,max_iter,2)
+        if method == 1
+            # Probably need to modify this.
+            ψ,itcnt,r,~,~,~ = ocnmod.FD_itrsolve_2D(Cx,Cyp,ζ,ug,tol,1.6,1,0,0,0,0,1e3,0,2)
+        elseif method == 2
+            # Use Conjugate Gradient Krylov to solve for the streamfunction
+            ψ,itcnt,r = ocnmod.cgk_2d(Cx,Cyp,ζ,ug,chk_per,tol,max_iter,2)
+        end
 
         return ψ,itcnt,r
     end
@@ -2195,5 +2206,9 @@ module ocnmod
 
         return c_u, c_v
     end
+
+
+
+
 # Module End
 end
