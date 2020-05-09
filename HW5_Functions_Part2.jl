@@ -7,8 +7,8 @@ include("AllFunctions12850.jl")
 # X and Y Grids
 #xgrid = [0:1e5:5e6;]
 #ygrid = [0:1e5:1e7;]
-xgrid = [0:1:50;]
-ygrid = [0:1:100;]
+xgrid = [0:1e5:5e6;]
+ygrid = [0:1e5:1e7;]
 
 # Get Midpoints
 mx      = ocnmod.get_midpoints(xgrid)
@@ -45,21 +45,19 @@ save_iter = 1000
 max_iter  = 1e3
 
 ## Time parameters
-dt        = 0.1#3600*24*30     # Timestep for model integration
+dt        = 3600*24*14     # Timestep for model integration
 ts_max    = 100        # Number of timesteps to take
-θ         = 0.5
+θ         = 0
 
 
 ## Courant to evaluate stability
-uval = 10
-vval = 10
+uval = 0.04
+vval = 0.04
 courant = uval*dt/δx +  vval*dt/δy
 
 
 ## Velocity Field and IC -------------------------------
 case     = 3
-
-
 
 
 #u = [1e3*cos(pi*y/Ly) for x in xgrid, y in ygrid, t in t:ts_max]
@@ -95,11 +93,11 @@ wcpts,wcuv = ocnmod.quiverprep_2d(xgrid,ygrid,u[:,:,t],v[:,:,t],0.5)
 pwc = heatmap(mx,my,T0',
         seriescolor=:dense,
         clims=(0,12))
-pwc=Plots.quiver(wcpts,quiver=(wcuv),
+pwc=Plots.quiver!(wcpts,quiver=(wcuv),
         linecolor=:black,
         title="Velocity Field",
-        ylims=(0,ymax),
-        xlims=(0,xmax),
+        ylims=(0,Ly),
+        xlims=(0,Lx),
         xlabel="Zonal (m)",
         ylabel="Meridional (m)")
 
@@ -254,8 +252,8 @@ anim3 = @animate for t ∈ 1:ts_max
         pwc=Plots.quiver!(wcpts,quiver=(wcuv),
                 linecolor=:black,
                 #title="Velocity Field",
-                ylims=(0,ymax),
-                xlims=(0,xmax))
+                ylims=(0,Ly),
+                xlims=(0,Lx))
 end
 gif(anim3,"HW5_Temperature Advection_case"*string(case)*".gif",fps=10)
 
@@ -298,5 +296,5 @@ l = @layout[a b; c d]
         pwc=Plots.quiver!(wcpts,quiver=(wcuv),
                 linecolor=:black,
                 #title="Velocity Field",
-                ylims=(0,ymax),
-                xlims=(0,xmax))
+                ylims=(0,Ly),
+                xlims=(0,Ly))
