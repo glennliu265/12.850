@@ -8,16 +8,16 @@ using Statistics
 include("AllFunctions12850.jl")
 
 ## Choice Parameters to toggle
-K = 1e2 # Horizontal Eddy Diffusivity (for Vorticity)
-saveiter = 1;
+K = 1e4 # Horizontal Eddy Diffusivity (for Vorticity)
+saveiter = 365;
 
 
 ## Grid Set-up  -----------------------------------------------
 # X and Y Grids
 #xgrid = [0:1e5:5e6;]
 #ygrid = [0:1e5:1e7;]
-xgrid = [0:2.5e5:5e6;]
-ygrid = [0:2.5e5:1e7;]
+xgrid = [0:2e5:5e6;]
+ygrid = [0:2e5:1e7;]
 
 # Get Midpoints
 mx      = ocnmod.get_midpoints(xgrid)
@@ -68,7 +68,7 @@ max_iter  = 1e5
 
 ## Time parameters
 dt        = 3600*24     # Timestep for model integration
-ts_max    = 3650        # Number of timesteps to take
+ts_max    = 3650   # Number of timesteps to take
 θ         = 0.5
 tmaxval   = dt*ts_max   # Maximum timestep value in seconds
 
@@ -90,7 +90,7 @@ dτy = Float64[ 0 for x in xedge, y in yedge, t in 1:ts_max]
 
 
 # Make Random time series
-randts = rand(ts_max)*2
+randts = rand(ts_max)*10
 randts = randts .- mean(randts)
 
 # Set up NAO Wind Stress Pattern
@@ -420,7 +420,7 @@ elapsed = time() - allstart
 casen=1
 
 qscale = 5e5
-anim3 = @animate for t ∈ 1:10:3650
+anim3 = @animate for t ∈ 1:10
         u = uall[:,:,t]
         v = vall[:,:,t]
         pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
@@ -438,4 +438,4 @@ anim3 = @animate for t ∈ 1:10:3650
             lc="black"
             )
 end
-gif(anim3,"HW6_temptest_10yr.gif",fps=50)
+gif(anim3,"HW6_temptest_10yr_1e4_normform_fr.gif",fps=50)
