@@ -3,6 +3,7 @@ using Printf
 using LinearAlgebra
 #using PyPlot
 using JLD
+using Statistics
 
 include("AllFunctions12850.jl")
 
@@ -67,7 +68,7 @@ max_iter  = 1e5
 
 ## Time parameters
 dt        = 3600*24     # Timestep for model integration
-ts_max    = 365        # Number of timesteps to take
+ts_max    = 3650        # Number of timesteps to take
 θ         = 0.5
 tmaxval   = dt*ts_max   # Maximum timestep value in seconds
 
@@ -77,19 +78,31 @@ H  = 1000 #m
 τ0 = 0.1  #.* ones(xmax,ymax)  #N/m2
 
 
-## Case Setting
-casen = 1
+## FORCING SETUP
 
 # Create Zonal Wind Stress Terms
 xedge = [0:δx:(Lx+2δx);]
 yedge = [0:δy:(Ly+2δy);]
 
-# Case 1: Constant Zonal Wind Only, increasing in time
-# Seasonal fluctuation of magnitude with time
-if casen ==1
-    dτx = [ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge, t in 1:ts_max]
-    dτy = [ 0 for x in xedge, y in yedge, t in 1:ts_max]
-end
+# Set up Background Wind Stress
+dτx = Float64[ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge, t in 1:ts_max]
+dτy = Float64[ 0 for x in xedge, y in yedge, t in 1:ts_max]
+
+
+# Make Random time series
+randts = rand(ts_max)*2
+randts = randts .- mean(randts)
+
+# Set up NAO Wind Stress Pattern
+NaoT = 0.05
+NaoTx = Float64[-NaoT*sin(pi*x/Lx)*cos(2*pi*y/Ly)*randts[t] for x in xedge, y in yedge, t in 1:ts_max]
+NaoTy = Float64[ NaoT*sin(2*pi*x/(Lx))*cos(pi*y/Ly)*randts[t] for x in xedge, y in yedge, t in 1:ts_max]
+
+# Add Forcings together
+dτx .+= NaoTx
+dτy .+= NaoTy
+
+
 
 # # Case 2: Meridional Component (v sinusoidal with x) which weakens with time
 # if casen == 2
@@ -124,19 +137,21 @@ end
 
 WBC = 1
 wb_val = [y/y*0 for y in my, t in 1:ts_max]#[y/y for y in mx]
+wbt    = [25-y/Ly*25 for y in my, t in 1:ts_max]
 
 # Eastern
 EBC = 1
 eb_val = [y/y*0 for y in my, t in 1:ts_max]#[y/y for y in my]
+ebt    = [25-y/Ly*25 for y in my, t in 1:ts_max]
 
 # North
 NBC = 1
 nb_val = [x/x*0 for x in mx, t in 1:ts_max] #[sin(3*(x/Lx*pi)) for x in mx]
-
+nbt    = [0 for x in mx, t in 1:ts_max]
 # South
 SBC = 1
 sb_val = [x/x*0 for x in mx, t in 1:ts_max]#[sin(3*(x/Lx*pi)) for x in mx]
-
+sbt    = [25 for x in mx, t in 1:ts_max]
 
 ## Run the script
 # Set periodic boundary options DO NOT EDIT
@@ -152,10 +167,10 @@ end
 if EBC == 3
     eper = 1
 end
-if NBC == 1
+if NBC == 3
     nper = 1
 end
-if SBC == 1
+if SBC == 3
     sper = 1
 end
 chk_per[1] = nper
@@ -175,6 +190,7 @@ zall = zeros(Float64,xmax,ymax,tsdim[1])
 ψ_t = zeros(Float64,xmax,ymax,tsdim[1])
 uall = zeros(Float64,xmax,ymax,tsdim[1])
 vall = zeros(Float64,xmax,ymax,tsdim[1])
+tall =zeros(Float64,xmax,ymax,tsdim[1])
 
 # Dummy Variables
 x_guess = zeros(Float64,xmax,ymax)
@@ -186,12 +202,14 @@ allstart=time()
 zprev    = zeros(Float64,xmax,ymax) # Vorticity IC
 uprev    = zeros(Float64,xmax,ymax)
 vprev    = zeros(Float64,xmax,ymax)
+tprev    = Float64[25-y/Ly*30 for x in mx, y in my]
 
 for t = 1:ts_max
-        global uprev, vprev, zprev
+        global uprev, vprev, zprev, tprev
         u0 = uprev
         v0 = vprev
         z0 = zprev
+        t0 = tprev
         # # Take vorticity and velocities from last timestep
         # if t > 1
         #         x_init = z0
@@ -271,19 +289,43 @@ for t = 1:ts_max
         # FEM advection
         ~,~,z0 = ocnmod.CN_make_matrix_2d(dt,0,z0,Ad_x0,Ad_y0p,dummyC,dummyC,Ad_S0,dummyS,1e5,chk_per,2)
 
+        # ----------------------------------
+        # Advect Temperature
+        # ----------------------------------
+        Ad_x0,Ad_Bx0 = ocnmod.UW_calc_coeff_2D(x_f,xmax,u0 ,EBC,ebt[:,t],WBC,wbt[:,t])
+        Ad_y0,Ad_By0 = ocnmod.UW_calc_coeff_2D(y_f,ymax,v0',NBC,nbt[:,t],SBC,sbt[:,t])
+
+        # Permute dimensions (p for permute)
+        Ad_y0p   = permutedims(Ad_y0,[1,3,2])
+        Ad_By0p  = permutedims(Ad_By0,[2,1])
+
+        # Forcing Term is not there, so it will just be Ad_By0
+        Ad_S0    = (Ad_Bx0 .+ Ad_By0p)
+
+        # FEM advection
+        ~,~,t0 = ocnmod.CN_make_matrix_2d(dt,0,t0,Ad_x0,Ad_y0p,dummyC,dummyC,Ad_S0,dummyS,1e5,chk_per,2)
+
+
+
         if t%saveiter == 0
             idx = Int16[]
             push!(idx,ceil(t/saveiter))
             uall[:,:,idx[1]] = u0
             vall[:,:,idx[1]] = v0
             zall[:,:,idx[1]] = z0
+            tall[:,:,idx[1]] = t0
             elapsed = time() - allstart
+            #@printf("\nCompleted iteration %i in %s",t,elapsed)
+        end
+        if t%365 == 0
             @printf("\nCompleted iteration %i in %s",t,elapsed)
         end
+
 
         zprev = z0
         vprev = v0
         uprev = u0
+        tprev = t0
 
 end
 elapsed = time() - allstart
@@ -293,98 +335,98 @@ elapsed = time() - allstart
 # Animate Vorticity (Left) and Streamfunction (Right)
 # ---------------------------------------------------
 # Prepare for animating vorticity and streamfunction
+#
+# if casen == 1
+#     qscale = 1e3
+# elseif casen == 2
+#     qscale = 5e3
+# elseif casen == 3
+#     qscale = 1e3
+# end
+# qscale = 5e6
+# x_u = mx[2:end-1]
+# y_v = my[2:end-1]
+#
+# # Determine maximum values
+# ζ0 = findmax(abs.(zall))[1]
+# plotvort = vort_t/ζ0
+#
+# # Determine maximum values
+# ψ0     = findmax(abs.(zall))[1]
+# plotsf = ψ_t/ψ0
+#
+# anim3 = @animate for t ∈ 1:10
+#         l = @layout[a b]
+#         #
+#         # wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
+#         #
+#         # Make quivers
+#         u = uall[:,:,t]
+#         v = vall[:,:,t]
+#         pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
+#
+#         c = Plots.contourf(mx,my,zall[:,:,t]',
+#                 clabels=true,
+#                 levels=[-1:0.1:1;],
+#                 clims=(-1,1),
+#                 title="Vorticity; t="*string(t)*"; z0="*@sprintf("%.2e",ζ0),
+#                 xlabel="x (meters)",
+#                 ylabel="y (meters)",
+#                 fillcolor=:balance
+#                 )
+#         c=Plots.quiver!(wspts,quiver=(wsuv),
+#             ylims=(0,Ly),
+#             xlims=(0,Lx),
+#             lc="black",
+#             )
+#
+#         #h = Plots.contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
+#         # h = Plots.contourf(mx,my,plotsf[:,:,t]',
+#         #         clabels=true,
+#         #         levels=[-1:0.1:1;],
+#         #         clims=(-1,1),
+#         #         title="Psi; t="*string(t)*"; psi0="*@sprintf("%.2e",ψ0),
+#         #         xlabel="x (meters)",
+#         #         ylabel="y (meters)",
+#         #         fillcolor=:balance
+#         #         )
+#         h = Plots.quiver(pts,quiver=(uv),
+#             ylims=(0,Ly),
+#             xlims=(0,Lx),
+#             lc="black"
+#             )
+#
+#         Plots.plot(c,h,layout = l)
+# end
+# gif(anim3,"HW6_Case"*string(casen)*"e0_2dtest.gif",fps=5)
 
-if casen == 1
-    qscale = 1e3
-elseif casen == 2
-    qscale = 5e3
-elseif casen == 3
-    qscale = 1e3
-end
-qscale = 5e6
-x_u = mx[2:end-1]
-y_v = my[2:end-1]
+#
+#
+#
+# var = zall
+# anim3 = @animate for t ∈ 1:5:365
+#
+#         c = Plots.contourf(mx,my,var[:,:,t]',
+#                 clabels=true,
+#                 title="Vorticity; t="*string(t),
+#                 xlabel="x (meters)",
+#                 ylabel="y (meters)",
+#                 fillcolor=:balance
+#                 )
+# end
+# gif(anim3,"HW6_Case"*string(casen)*"e0_2dtest.gif",fps=20)
+#
 
-# Determine maximum values
-ζ0 = findmax(abs.(zall))[1]
-plotvort = vort_t/ζ0
-
-# Determine maximum values
-ψ0     = findmax(abs.(zall))[1]
-plotsf = ψ_t/ψ0
-
-anim3 = @animate for t ∈ 1:10
-        l = @layout[a b]
-        #
-        # wspts,wsuv = ocnmod.quiverprep_2d(xedge,yedge,dτx[:,:,t],dτy[:,:,t],qscale)
-        #
-        # Make quivers
-        u = uall[:,:,t]
-        v = vall[:,:,t]
-        pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
-
-        c = Plots.contourf(mx,my,zall[:,:,t]',
-                clabels=true,
-                levels=[-1:0.1:1;],
-                clims=(-1,1),
-                title="Vorticity; t="*string(t)*"; z0="*@sprintf("%.2e",ζ0),
-                xlabel="x (meters)",
-                ylabel="y (meters)",
-                fillcolor=:balance
-                )
-        c=Plots.quiver!(wspts,quiver=(wsuv),
-            ylims=(0,Ly),
-            xlims=(0,Lx),
-            lc="black",
-            )
-
-        #h = Plots.contourf(mx,my,ψ_t[:,:,t]'/findmax(abs.(ψ_t))[1],
-        # h = Plots.contourf(mx,my,plotsf[:,:,t]',
-        #         clabels=true,
-        #         levels=[-1:0.1:1;],
-        #         clims=(-1,1),
-        #         title="Psi; t="*string(t)*"; psi0="*@sprintf("%.2e",ψ0),
-        #         xlabel="x (meters)",
-        #         ylabel="y (meters)",
-        #         fillcolor=:balance
-        #         )
-        h = Plots.quiver(pts,quiver=(uv),
-            ylims=(0,Ly),
-            xlims=(0,Lx),
-            lc="black"
-            )
-
-        Plots.plot(c,h,layout = l)
-end
-gif(anim3,"HW6_Case"*string(casen)*"e0_2dtest.gif",fps=5)
-
-
-
-
-var = zall
-anim3 = @animate for t ∈ 1:5:365
-
-        c = Plots.contourf(mx,my,var[:,:,t]',
-                clabels=true,
-                title="Vorticity; t="*string(t),
-                xlabel="x (meters)",
-                ylabel="y (meters)",
-                fillcolor=:balance
-                )
-end
-gif(anim3,"HW6_Case"*string(casen)*"e0_2dtest.gif",fps=20)
-
-
-
+casen=1
 
 qscale = 5e5
-anim3 = @animate for t ∈ 1:5:365
+anim3 = @animate for t ∈ 1:10:3650
         u = uall[:,:,t]
         v = vall[:,:,t]
         pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
-        c = Plots.contourf(mx,my,zall[:,:,t]',
+        c = Plots.contourf(mx,my,tall[:,:,t]',
                 clabels=true,
-                title="Vorticity; t="*string(t),
+                title="Temp; t="*string(t),
                 xlabel="x (meters)",
                 ylabel="y (meters)",
                 fillcolor=:balance
@@ -396,4 +438,4 @@ anim3 = @animate for t ∈ 1:5:365
             lc="black"
             )
 end
-gif(anim3,"HW6_Case"*string(casen)*"e0_quivtest.gif",fps=20)
+gif(anim3,"HW6_temptest_10yr.gif",fps=50)
