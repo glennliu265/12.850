@@ -68,7 +68,7 @@ max_iter  = 1e5
 
 ## Time parameters
 dt        = 3600*24     # Timestep for model integration
-ts_max    = 3650   # Number of timesteps to take
+ts_max    = 36500   # Number of timesteps to take
 θ         = 0.5
 tmaxval   = dt*ts_max   # Maximum timestep value in seconds
 
@@ -85,8 +85,8 @@ xedge = [0:δx:(Lx+2δx);]
 yedge = [0:δy:(Ly+2δy);]
 
 # Set up Background Wind Stress
-dτx = Float64[ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge, t in 1:ts_max]
-dτy = Float64[ 0 for x in xedge, y in yedge, t in 1:ts_max]
+dτx = Float64[ -τ0*cos(2*pi*y/Ly) for x in xedge, y in yedge]
+dτy = Float64[ 0 for x in xedge, y in yedge]
 
 
 # Make Random time series
@@ -95,12 +95,12 @@ randts = randts .- mean(randts)
 
 # Set up NAO Wind Stress Pattern
 NaoT = 0.05
-NaoTx = Float64[-NaoT*sin(pi*x/Lx)*cos(2*pi*y/Ly)*randts[t] for x in xedge, y in yedge, t in 1:ts_max]
-NaoTy = Float64[ NaoT*sin(2*pi*x/(Lx))*cos(pi*y/Ly)*randts[t] for x in xedge, y in yedge, t in 1:ts_max]
+NaoTx = Float64[-NaoT*sin(pi*x/Lx)*cos(2*pi*y/Ly) for x in xedge, y in yedge]
+NaoTy = Float64[ NaoT*sin(2*pi*x/(Lx))*cos(pi*y/Ly) for x in xedge, y in yedge]
 
 # Add Forcings together
-dτx .+= NaoTx
-dτy .+= NaoTy
+#dτx .+= NaoTx
+#dτy .+= NaoTy
 
 
 
@@ -118,40 +118,43 @@ dτy .+= NaoTy
 # end
 x_f2       = ones(Int8,1,length(xedge))*δx
 y_f2       = ones(Int8,1,length(yedge))*δx
-curlTx     = zeros(Float64,xmax,ymax,ts_max)
-curlTy     = zeros(Float64,xmax,ymax,ts_max)
-# Take x along y
-for m = 1:ts_max
-    curlTx[:,:,m],x1,y1 = ocnmod.ddx_2d(dτx[:,:,m],y_f2,xedge,yedge,2)
-    curlTy[:,:,m],x1,y1 = ocnmod.ddx_2d(dτy[:,:,m],x_f2,xedge,yedge,1)
-end
-
-
+# curlTx     = zeros(Float64,xmax,ymax,ts_max)
+# curlTy     = zeros(Float64,xmax,ymax,ts_max)
+# # Take x along y
+# for m = 1:ts_max
+#     curlTx[:,:,m],x1,y1 = ocnmod.ddx_2d(dτx[:,:,m],y_f2,xedge,yedge,2)
+#     curlTy[:,:,m],x1,y1 = ocnmod.ddx_2d(dτy[:,:,m],x_f2,xedge,yedge,1)
+#
+# end
+curlTx,~,~ = ocnmod.ddx_2d(dτx,y_f2,xedge,yedge,2)
+curlTy,~,~ = ocnmod.ddx_2d(dτy,x_f2,xedge,yedge,1)
+curlNaox,~,~ = ocnmod.ddx_2d(NaoTx,y_f2,xedge,yedge,2)
+curlNaoy,~,~ = ocnmod.ddx_2d(NaoTy,x_f2,xedge,yedge,1)
 # -----------------------------------
 # CALCULATE FORCING TERM
 # -----------------------------------
-    S = 1/(ρ0*H) * (curlTy - curlTx)
+    #S = 1/(ρ0*H) * (curlTy - curlTx)
 
 ## Boundary Conditions
 # 1 = "Dirichlet", 2 = "Neumann", 3="Periodic"
 
 WBC = 1
-wb_val = [y/y*0 for y in my, t in 1:ts_max]#[y/y for y in mx]
-wbt    = [25-y/Ly*25 for y in my, t in 1:ts_max]
+wb_val = [y/y*0 for y in my]#[y/y for y in mx]
+wbt    = [25-y/Ly*25 for y in my]
 
 # Eastern
 EBC = 1
-eb_val = [y/y*0 for y in my, t in 1:ts_max]#[y/y for y in my]
-ebt    = [25-y/Ly*25 for y in my, t in 1:ts_max]
+eb_val = [y/y*0 for y in my]#[y/y for y in my]
+ebt    = [25-y/Ly*25 for y in my]
 
 # North
 NBC = 1
-nb_val = [x/x*0 for x in mx, t in 1:ts_max] #[sin(3*(x/Lx*pi)) for x in mx]
-nbt    = [0 for x in mx, t in 1:ts_max]
+nb_val = [x/x*0 for x in mx] #[sin(3*(x/Lx*pi)) for x in mx]
+nbt    = [0 for x in mx]
 # South
 SBC = 1
-sb_val = [x/x*0 for x in mx, t in 1:ts_max]#[sin(3*(x/Lx*pi)) for x in mx]
-sbt    = [25 for x in mx, t in 1:ts_max]
+sb_val = [x/x*0 for x in mx]#[sin(3*(x/Lx*pi)) for x in mx]
+sbt    = [25 for x in mx]
 
 ## Run the script
 # Set periodic boundary options DO NOT EDIT
@@ -229,15 +232,27 @@ for t = 1:ts_max
             nm = t+1
         end
 
+        # ------------
+        # Set up forcing
+        # ------------
+        curlx0 = curlTx .+ curlNaox .* randts[t]
+        curly0 = curlTy .+ curlNaoy .* randts[t]
+
+        curlx1 = curlTx .+ curlNaox .* randts[nm]
+        curly1 = curlTy .+ curlNaoy .* randts[nm]
+
+        S0 = 1/(ρ0*H) * (curly0 - curlx0)
+        S1 = 1/(ρ0*H) * (curly1 - curlx1)
+
         ## ------------------------
         # Solve for Vorticity (HW4)
         ## ------------------------
 
         # Compute Diffusivity Coefficients (x and y (and permute y))
-        Cx0,Bx0 = ocnmod.CD_diffu_calc_coeff(x_f ,x_c ,κx ,EBC,eb_val[:,t],WBC,wb_val[:,t],x_c0,κx0)
-        Cy0,By0 = ocnmod.CD_diffu_calc_coeff(y_f',y_c',κy',NBC,nb_val[:,t],SBC,sb_val[:,t],y_c0,κy0)
-        Cx1,Bx1 = ocnmod.CD_diffu_calc_coeff(x_f ,x_c ,κx ,EBC,eb_val[:,nm],WBC,wb_val[:,nm],x_c0,κx0)
-        Cy1,By1 = ocnmod.CD_diffu_calc_coeff(y_f',y_c',κy',NBC,nb_val[:,nm],SBC,sb_val[:,nm],y_c0,κy0)
+        Cx0,Bx0 = ocnmod.CD_diffu_calc_coeff(x_f ,x_c ,κx ,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cy0,By0 = ocnmod.CD_diffu_calc_coeff(y_f',y_c',κy',NBC,nb_val,SBC,sb_val,y_c0,κy0)
+        Cx1,Bx1 = ocnmod.CD_diffu_calc_coeff(x_f ,x_c ,κx ,EBC,eb_val,WBC,wb_val,x_c0,κx0)
+        Cy1,By1 = ocnmod.CD_diffu_calc_coeff(y_f',y_c',κy',NBC,nb_val,SBC,sb_val,y_c0,κy0)
 
 
         # Permute dimensions (p for permute)
@@ -247,8 +262,7 @@ for t = 1:ts_max
         By1p   = permutedims(By1,[2,1])
 
         # Modify Forcing Term
-        S0 = S[:,:,t]
-        S1 = S[:,:,nm]
+
         S0 .-= (Bx0 + By0p)
         S1 .-= (Bx0 + By0p)
 
@@ -266,7 +280,7 @@ for t = 1:ts_max
                           z0,tol,max_iter,1)
         # Solve for UV
         u0,v0,~,~=ocnmod.psi2uv(ψ_t,x_f,y_f,mx,my,
-                                    0,nb_val[:,t],sb_val[:,t],eb_val[:,t],wb_val[:,t])
+                                    0,nb_val,sb_val,eb_val,wb_val)
 
         # Save velocities at specified iterations
 
@@ -274,8 +288,8 @@ for t = 1:ts_max
         # --------------------
         # Advect PV
         # --------------------
-        Ad_x0,Ad_Bx0 = ocnmod.UW_calc_coeff_2D(x_f,xmax,u0 ,EBC,eb_val[:,t],WBC,wb_val[:,t])
-        Ad_y0,Ad_By0 = ocnmod.UW_calc_coeff_2D(y_f,ymax,v0',NBC,nb_val[:,t],SBC,sb_val[:,t])
+        Ad_x0,Ad_Bx0 = ocnmod.UW_calc_coeff_2D(x_f,xmax,u0 ,EBC,eb_val,WBC,wb_val)
+        Ad_y0,Ad_By0 = ocnmod.UW_calc_coeff_2D(y_f,ymax,v0',NBC,nb_val,SBC,sb_val)
 
 
         # Permute dimensions (p for permute)
@@ -292,8 +306,8 @@ for t = 1:ts_max
         # ----------------------------------
         # Advect Temperature
         # ----------------------------------
-        Ad_x0,Ad_Bx0 = ocnmod.UW_calc_coeff_2D(x_f,xmax,u0 ,EBC,ebt[:,t],WBC,wbt[:,t])
-        Ad_y0,Ad_By0 = ocnmod.UW_calc_coeff_2D(y_f,ymax,v0',NBC,nbt[:,t],SBC,sbt[:,t])
+        Ad_x0,Ad_Bx0 = ocnmod.UW_calc_coeff_2D(x_f,xmax,u0 ,EBC,ebt,WBC,wbt)
+        Ad_y0,Ad_By0 = ocnmod.UW_calc_coeff_2D(y_f,ymax,v0',NBC,nbt,SBC,sbt)
 
         # Permute dimensions (p for permute)
         Ad_y0p   = permutedims(Ad_y0,[1,3,2])
@@ -420,7 +434,7 @@ elapsed = time() - allstart
 casen=1
 
 qscale = 5e5
-anim3 = @animate for t ∈ 1:10
+anim3 = @animate for t ∈ 1:100
         u = uall[:,:,t]
         v = vall[:,:,t]
         pts,uv = ocnmod.quiverprep_2d(mx,my,u,v,qscale)
@@ -438,4 +452,7 @@ anim3 = @animate for t ∈ 1:10
             lc="black"
             )
 end
-gif(anim3,"HW6_temptest_10yr_1e4_normform_fr.gif",fps=50)
+gif(anim3,"HW6_temptest_100yr_1e4_normform_fr.gif",fps=50)
+
+
+JLD.save("/Users/gyl/HW6_365run_10e2.jld","randts",randts,"uall",uall,"vall",vall,"zall",zall,"tall",tall)
